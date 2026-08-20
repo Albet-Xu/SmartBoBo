@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+  <style>
+    @media (prefers-color-scheme: dark) {
+      svg { stroke: #fff; }
+    }
+  </style>
+  <!-- Pineapple leaves (crown) -->
+  <path d="M25 22 Q24 12 22 5 Q21.5 1 20 3" stroke-width="2.8" />
+  <path d="M25 22 Q27 10 31 4 Q33 1 31 4" stroke-width="2.8" />
+  <path d="M25 22 Q18 15 11 9 Q9 7 10 10" stroke-width="2.5" />
+  <path d="M25 22 Q32 15 39 9 Q41 7 40 10" stroke-width="2.5" />
+  <path d="M25 22 Q17 17 9 13" stroke-width="2.2" />
+  <path d="M25 22 Q33 17 41 13" stroke-width="2.2" />
+  <!-- Pineapple body -->
+  <path d="M25 24 Q8 24 7.5 37 Q7.2 44 17 48 Q22.5 50 25 50 Q27.5 50 33 48 Q42.8 44 42.5 37 Q42 24 25 24 Z" stroke-width="3.5" fill="none" />
+  <!-- Cross-hatch grid lines -->
+  <path d="M17.5 29 L12.5 49" stroke-width="1.2" fill="none" />
+  <path d="M25 27 L25 50" stroke-width="1.2" fill="none" />
+  <path d="M32.5 29 L37.5 49" stroke-width="1.2" fill="none" />
+  <path d="M8 32 L42 32" stroke-width="1.2" fill="none" />
+  <path d="M7.5 39 L42.5 39" stroke-width="1.2" fill="none" />
+  <path d="M8.5 46 L41.5 46" stroke-width="1.2" fill="none" />
+</svg>

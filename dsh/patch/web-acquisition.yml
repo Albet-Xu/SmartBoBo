@@ -1,0 +1,25 @@
+# BoBo/dsh/patch/web-acquisition.yml
+# 把采集工具插件 `tool-acquisition`（crawl_fetch）注入 Web 装配。
+#
+# 用法：与端口补丁一起叠加 ——
+#   pnpm bobo   （bobo 脚本内部已同时加载 packages/bobo/cordis.patch.yml 与本文件）
+#
+# 语法要点（与官方 examples/web-cordis/cordis.yml 一致）：
+# - 新增插件行必须用 `- insert:`；裸的 `- id:` 只会覆盖已存在的行，
+#   若 id 不存在会被**静默跳过**，工具不会加载。
+# - `- id: webserver` 那类是“覆盖已有行”的写法，只适用于端口补丁这种改配置场景。
+#
+# 关键：插件 name 必须用 **file: URL** 指向编译产物 lib/index.js。
+# host 层（profile --patch）解析裸包名时从 ~/.dsh/profiles/web/ 出发向上找
+# node_modules，找不到 App workspace 内的自定义包（ERR_MODULE_NOT_FOUND）；
+# 而 file: URL 可直接加载该模块（其 @deepseek-ai/* 依赖经插件自身 symlink
+# 解析到同一实例）。默认 dataDir/scriptsDir 是相对进程 cwd 的，web 下 cwd 会
+# 飘，所以下面必须给绝对路径。
+- insert:
+    - id: tool-acquisition
+      name: 'file:///E:/SmartBoBo/BoBo/dsh/packages/acquisition/tool-acquisition/lib/index.js'
+      config:
+        pythonBin: E:/SmartBoBo/BoBo/.venv/Scripts/python.exe
+        scriptsDir: E:/SmartBoBo/BoBo/scripts
+        dataDir: E:/SmartBoBo/BoBo/data
+        timeoutMs: 120000

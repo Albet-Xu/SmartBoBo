@@ -1,0 +1,12 @@
+# BoBo/dsh/packages/bobo/cordis.patch.yml
+# `bobo` 启动补丁：把 Web 应用监听端口固定为 7070（覆盖默认 3080/3081）。
+#
+# 说明（与官方 examples/web-cordis/cordis.yml 一致）：
+# - 这是 PATCH OVERLAY，不是完整装配树。`dsh web --patch <此文件>` 把它作为
+#   web profile 之上的一个 overlay 应用。
+# - patch 会**整体替换** webserver 行的 config，所以必须把 host 一起写全，
+#   不能只写 port（否则默认 host 会被丢弃）。
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 7070

@@ -1,0 +1,46 @@
+# BoBo 智能采集平台 · Python 环境（由 uv 管理）
+#
+# - 虚拟环境统一放在项目根的 `.venv/`（uv 标准位置），用下面的命令创建/同步：
+#     uv sync
+# - Python 版本与依赖版本全部锁定在 `uv.lock`（应提交到版本库）。
+# - 采集引擎以“本地路径依赖”引入（改源码即生效，等同 editable 安装）。
+
+[project]
+name = "bobo"
+version = "0.1.0"
+description = "BoBo 智能采集平台：本地 Python 采集引擎环境（camoufox / scrapling / crawl4ai）"
+# 「环境容器」项目的 requires-python 选宽松值；实际解释器由 uv 与环境内依赖约束决定
+requires-python = ">=3.10"
+dependencies = [
+    # 采集引擎 —— 见 [tool.uv.sources] 映射到本地 engines/ 路径
+    # scrapling 的 StealthyFetcher 需要 fetchers 额外依赖（curl_cffi/playwright/patchright 等）
+    "scrapling[fetchers]",
+    "crawl4ai",
+    # 默认抗检测浏览器引擎（从 PyPI 安装）
+    "camoufox>=0.5.5",
+]
+
+[tool.uv.sources]
+# 本地源码路径依赖（editable），映射到 engines/ 下的引擎源码
+scrapling = { path = "engines/scrapling" }
+crawl4ai  = { path = "engines/crawl4ai" }
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.uv]
+# 本项目只是“Python 环境容器”，本身不构建/分发任何 Python 包，
+# 标记为非 package（virtual project），只安装其依赖、不安装本包自身。
+package = false
+# 版本覆盖：camoufox 要求 playwright<1.61，而 scrapling[fetchers] 声明 >=1.61，
+# 二者在严格解析下冲突。实测 playwright 1.60 可同时满足两者（旧环境即如此），
+# 故以 override 统一到 <1.61，复现已验证可用的组合。
+override-dependencies = [
+    "playwright<1.61",
+]
+# 虚拟环境目录（uv 默认即 .venv，此处仅作说明）
+# venv = ".venv"
+# 固定解释器版本：见项目根的 `.python-version` 文件（`uv python pin 3.13` 生成）。
+# 也可用 `[tool.uv] python-preference` 控制解释器来源偏好。
