@@ -19,10 +19,34 @@ import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { existsSync, mkdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 const execFileAsync = promisify(execFile)
+
+/**
+ * 定位 BoBo 项目根目录（含 `dsh/`、`scripts/`、`.venv`、`data` 的目录）。
+ * 从本插件所在目录（lib 或 src）向上逐级查找第一个含 `dsh` 子目录的目录，
+ * 从而不依赖启动时的工作目录(cwd)或环境变量——项目克隆到任何路径都能正确定位。
+ * 找不到时返回 undefined（回退到相对路径）。
+ */
+function findProjectRoot(start: string): string | undefined {
+  let dir = resolve(start)
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(join(dir, 'dsh'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return undefined
+}
+
+/** 本项目（BoBo 平台）根目录；据此定位 .venv / scripts / data，跨机器、跨平台可移植。 */
+const BOBO_ROOT = findProjectRoot(dirname(fileURLToPath(import.meta.url)))
+
+/** Windows 用 .venv/Scripts/python.exe，Linux/macOS 用 .venv/bin/python。 */
+const PYTHON_SUBPATH = process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python'
 
 export const name = 'tool-acquisition'
 export const inject = ['tools']
@@ -39,24 +63,31 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  pythonBin: z.string().default('python'),
-  scriptsDir: z.string().default('scripts'),
+  // 可不填：未显式配置时由插件自动定位 BoBo 根的 .venv / scripts（可移植）。
+  // 注：schemastery 字段默认可省略，此处不加 default/optional。
+  pythonBin: z.string(),
+  scriptsDir: z.string(),
   dataDir: z.string().default(''),
   timeoutMs: z.natural().min(1000).default(120_000),
 })
 
 /**
- * 获取当前工作区的 data 目录
- * 如果配置了 dataDir，则使用配置的路径
- * 否则尝试获取当前工作区路径，返回其下的 data 文件夹
+ * 采集结果落盘目录：
+ * 优先用配置 dataDir；否则稳定回退到 BoBo 项目根的 data（跨机器可移植）；
+ * 无 BoBo 根时再回到“当前工作区 data”，最后相对 data。
  */
 function getDataDir(config: Config, workspacePath?: string): string {
-  // 如果配置了 dataDir 且不为空，使用配置的路径
+  // 1) 显式配置
   if (config.dataDir && config.dataDir.trim() !== '') {
     return config.dataDir
   }
 
-  // 尝试获取当前工作区路径
+  // 2) BoBo 项目根 data（可移植、稳定）
+  if (BOBO_ROOT) {
+    return join(BOBO_ROOT, 'data')
+  }
+
+  // 3) 当前工作区的 data
   if (workspacePath) {
     const dataDir = join(workspacePath, 'data')
     // 确保目录存在
@@ -70,7 +101,7 @@ function getDataDir(config: Config, workspacePath?: string): string {
     return dataDir
   }
 
-  // 最终回退到 BoBo/data 目录
+  // 4) 最终兜底
   return 'data'
 }
 
@@ -122,8 +153,11 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, exec) {
       const engine = args.engine ?? 'camoufox'
-      const pythonBin = config.pythonBin ?? 'python'
-      const scriptsDir = config.scriptsDir ?? 'scripts'
+      // 优先用配置显式值；否则自动定位到 BoBo 根对应的 .venv / scripts（跨机器可移植）
+      const pythonBin = config.pythonBin
+        ?? (BOBO_ROOT ? join(BOBO_ROOT, PYTHON_SUBPATH) : 'python')
+      const scriptsDir = config.scriptsDir
+        ?? (BOBO_ROOT ? join(BOBO_ROOT, 'scripts') : 'scripts')
 
       // 确定保存目录：优先使用用户指定的 saveDir，然后是当前会话的工作区 data 文件夹，最后是配置的 dataDir
       let dataDir: string

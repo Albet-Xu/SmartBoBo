@@ -37,9 +37,9 @@
 - id: tool-acquisition
   name: '@deepseek-ai/dsh-tool-acquisition'
   config:
-    pythonBin: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + (process.platform === 'win32' ? '/.venv/Scripts/python.exe' : '/.venv/bin/python')) : 'python'"
-    scriptsDir: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + '/scripts') : 'scripts'"
-    dataDir: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + '/data') : 'data'"
+    # pythonBin / scriptsDir / dataDir 留空，由插件按自身位置自动定位 BoBo 根
+    # 的 .venv / scripts / data（跨机器、跨平台可移植，无需环境变量）。
+    dataDir: ''
     timeoutMs: 120000
 
 # ── 基础工具 ─────────────────────────────────────────────────────────────────

@@ -9,21 +9,20 @@
 #   dependencies 里，启动时由 dsh 的 healProfilesModuleFallback 自动 link 到
 #   ~/.dsh/profiles/node_modules，因此任意机器 / 任意平台（Windows/Linux/macOS）
 #   都能解析，不再依赖 file:// 绝对路径。
-# - `config` 里的 pythonBin / scriptsDir 用 `!!js` 表达式，基于环境变量 BOBO_ROOT
-#   （指向 BoBo 项目根目录，由 `启动.cmd` / `启动.sh` 自动设置）推导 .venv 与
-#   scripts 路径；未设置时回退到 `python`(PATH) 与相对 `scripts`，便于直接调试。
+# - `config` 里 pythonBin / scriptsDir **留空**：由插件按自身位置自动定位 BoBo
+#   项目根的 `.venv` 与 `scripts`（跨机器、跨平台可移植，无需环境变量、不依赖
+#   启动时的 cwd）。dataDir 为空时同样回退到 BoBo 根 `data`。
 #
 # 语法要点（与官方 examples/web-cordis/cordis.yml 一致）：
 # - 新增插件行必须用 `- insert:`；裸的 `- id:` 只会覆盖已存在的行，
 #   若 id 不存在会被静默跳过，工具不会加载。
 # - `- id: webserver` 那类是“覆盖已有行”的写法，只适用于端口补丁这种改配置场景。
 #
-# !!js 表达式必须用双引号包裹（内含冒号，避免被 YAML 当映射分隔符解析）。
 - insert:
     - id: tool-acquisition
       name: '@deepseek-ai/dsh-tool-acquisition'
       config:
-        pythonBin: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + (process.platform === 'win32' ? '/.venv/Scripts/python.exe' : '/.venv/bin/python')) : 'python'"
-        scriptsDir: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + '/scripts') : 'scripts'"
+        # pythonBin / scriptsDir 留空，由插件按自身位置自动定位 BoBo 根的
+        # .venv 与 scripts（跨机器、跨平台可移植，无需环境变量）。
         dataDir: ''
         timeoutMs: 120000
