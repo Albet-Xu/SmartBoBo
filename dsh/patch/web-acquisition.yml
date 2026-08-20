@@ -11,7 +11,8 @@
 #   都能解析，不再依赖 file:// 绝对路径。
 # - `config` 里 pythonBin / scriptsDir **留空**：由插件按自身位置自动定位 BoBo
 #   项目根的 `.venv` 与 `scripts`（跨机器、跨平台可移植，无需环境变量、不依赖
-#   启动时的 cwd）。dataDir 为空时同样回退到 BoBo 根 `data`。
+#   启动时的 cwd）。`dataDir` 留空时，采集结果优先存到**当前会话工作区**下的
+#   `data/`（没有会自动创建），仅在会话无工作区时回退到 BoBo 根 `data`。
 #
 # 语法要点（与官方 examples/web-cordis/cordis.yml 一致）：
 # - 新增插件行必须用 `- insert:`；裸的 `- id:` 只会覆盖已存在的行，

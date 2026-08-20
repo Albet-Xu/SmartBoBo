@@ -73,8 +73,10 @@ export const Config: z<Config> = z.object({
 
 /**
  * 采集结果落盘目录：
- * 优先用配置 dataDir；否则稳定回退到 BoBo 项目根的 data（跨机器可移植）；
- * 无 BoBo 根时再回到“当前工作区 data”，最后相对 data。
+ * 1) 显式配置的 dataDir；
+ * 2) 当前会话的工作区（session cwd）下的 data——没有则自动创建（用户要求优先）；
+ * 3) BoBo 项目根 data 仅作兜底（会话无工作区时）；
+ * 4) 最终相对 data。
  */
 function getDataDir(config: Config, workspacePath?: string): string {
   // 1) 显式配置
@@ -82,23 +84,20 @@ function getDataDir(config: Config, workspacePath?: string): string {
     return config.dataDir
   }
 
-  // 2) BoBo 项目根 data（可移植、稳定）
-  if (BOBO_ROOT) {
-    return join(BOBO_ROOT, 'data')
-  }
-
-  // 3) 当前工作区的 data
-  if (workspacePath) {
+  // 2) 当前会话的工作区 data（优先；没有就创建 data 文件夹）
+  if (workspacePath && workspacePath.trim() !== '') {
     const dataDir = join(workspacePath, 'data')
-    // 确保目录存在
-    if (!existsSync(dataDir)) {
-      try {
-        mkdirSync(dataDir, { recursive: true })
-      } catch {
-        // 如果创建失败，回退到默认路径
-      }
+    try {
+      mkdirSync(dataDir, { recursive: true })
+    } catch {
+      // 创建失败则在脚本写入时再尝试
     }
     return dataDir
+  }
+
+  // 3) 兜底：BoBo 项目根 data（仅在会话无工作区时）
+  if (BOBO_ROOT) {
+    return join(BOBO_ROOT, 'data')
   }
 
   // 4) 最终兜底
@@ -159,7 +158,8 @@ export function apply(ctx: Context, config: Config): void {
       const scriptsDir = config.scriptsDir
         ?? (BOBO_ROOT ? join(BOBO_ROOT, 'scripts') : 'scripts')
 
-      // 确定保存目录：优先使用用户指定的 saveDir，然后是当前会话的工作区 data 文件夹，最后是配置的 dataDir
+      // 确定保存目录：优先用户指定 saveDir；否则由 getDataDir 决定——
+      // 显式 config.dataDir > 当前会话工作区 <cwd>/data(自动创建) > BoBo根/data(兜底)
       let dataDir: string
       if (args.saveDir) {
         dataDir = args.saveDir
