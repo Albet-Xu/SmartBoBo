@@ -35,11 +35,11 @@
 # ── 采集工具（核心）──────────────────────────────────────────────────────────
 
 - id: tool-acquisition
-  name: 'file:///E:/SmartBoBo/BoBo/dsh/packages/acquisition/tool-acquisition/lib/index.js'
+  name: '@deepseek-ai/dsh-tool-acquisition'
   config:
-    pythonBin: E:/SmartBoBo/BoBo/.venv/Scripts/python.exe
-    scriptsDir: E:/SmartBoBo/BoBo/scripts
-    dataDir: E:/SmartBoBo/BoBo/data
+    pythonBin: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + (process.platform === 'win32' ? '/.venv/Scripts/python.exe' : '/.venv/bin/python')) : 'python'"
+    scriptsDir: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + '/scripts') : 'scripts'"
+    dataDir: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + '/data') : 'data'"
     timeoutMs: 120000
 
 # ── 基础工具 ─────────────────────────────────────────────────────────────────

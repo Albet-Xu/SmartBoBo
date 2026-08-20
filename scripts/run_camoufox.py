@@ -1,11 +1,12 @@
-"""用 Camoufox（抗检测浏览器，默认采集通道）抓取单页，把渲染后的完整 HTML 存到本地。
+"""用 Camoufox（抗检测浏览器，默认采集通道）抓取单页，把渲染后的内容转为 Markdown 存到本地。
 
 dsh 的 crawl_fetch 工具经子进程调用本脚本。这是本平台默认的采集通道。
 
 行为：
 - 用真实浏览器渲染页面（执行 JS），取**渲染后的完整 HTML**（`page.content()`）。
-- 把 HTML 整份写入本地文件：文件名优先用 `站点_标题_时间戳.html`（--auto-name 时），
-  否则用 --out 指定的路径。**不生成 .json 文件**（原始数据就是 HTML）。
+- 使用 html2text 将 HTML 转换为 Markdown 格式。
+- 把 Markdown 写入本地文件：文件名优先用 `站点_标题_时间戳.md`（--auto-name 时），
+  否则用 --out 指定的路径。**不生成 .json 文件**。
 - 仅通过 stdout 打一行单行 JSON `{"savedTo","status","preview"}` 供 dsh 插件解析，
   不落盘 JSON。
 
@@ -24,6 +25,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from camoufox.async_api import AsyncCamoufox
 from camoufox import DefaultAddons
+import html2text
 
 COOKIE_ACCEPT_SELECTORS = [
     "button:has-text('我接受')",
@@ -46,7 +48,7 @@ def build_filename(url: str, title: str) -> str:
     host_s = safe_name(host, 40)
     title_s = safe_name(title, 60)
     ts = time.strftime('%Y%m%d-%H%M%S')
-    return f"{host_s}_{title_s}_{ts}.html"
+    return f"{host_s}_{title_s}_{ts}.md"
 
 
 async def dismiss_cookie_overlays(page) -> None:
@@ -83,18 +85,45 @@ async def run(url: str, out: str, selector: str | None, auto_name: bool) -> dict
         html = await page.content()
         title = await page.title() or 'untitled'
 
+        # 将 HTML 转换为 Markdown
+        h = html2text.HTML2Text()
+        h.ignore_links = False
+        h.ignore_images = False
+        h.ignore_emphasis = False
+        h.body_width = 0  # 不自动换行
+        h.unicode_snob = True  # 使用 Unicode 字符
+        h.skip_internal_links = False
+        h.inline_links = True
+        h.ignore_images = False
+        h.images_to_alt = False
+        h.single_line_break = False
+
+        # 如果指定了选择器，只转换选择器匹配的内容
+        if selector:
+            try:
+                el = page.locator(selector).first
+                if await el.count() > 0:
+                    selected_html = await el.inner_html()
+                    markdown = h.handle(selected_html)
+                else:
+                    markdown = h.handle(html)
+            except Exception:
+                markdown = h.handle(html)
+        else:
+            markdown = h.handle(html)
+
         # 决定最终输出路径
         if auto_name:
             out = str(Path(out).parent / build_filename(url, title))
         else:
             out = str(out)
-            if not out.lower().endswith('.html'):
-                out = out + '.html'
+            if not out.lower().endswith('.md'):
+                out = out + '.md'
 
-        # 仅存 HTML，不生成 JSON
+        # 保存 Markdown 文件
         Path(out).parent.mkdir(parents=True, exist_ok=True)
         with open(out, 'w', encoding='utf-8') as f:
-            f.write(html)
+            f.write(markdown)
 
         # 取一行文本预览（不落盘，仅回给插件作告知）
         if selector:

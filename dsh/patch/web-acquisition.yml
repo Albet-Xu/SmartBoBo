@@ -1,25 +1,29 @@
 # BoBo/dsh/patch/web-acquisition.yml
-# 把采集工具插件 `tool-acquisition`（crawl_fetch）注入 Web 装配。
+# 把采集工具插件 `@deepseek-ai/dsh-tool-acquisition`（crawl_fetch）注入 Web 装配。
 #
 # 用法：与端口补丁一起叠加 ——
 #   pnpm bobo   （bobo 脚本内部已同时加载 packages/bobo/cordis.patch.yml 与本文件）
 #
+# 可移植性说明（不写死任何机器路径）：
+# - `name` 用裸包名 `@deepseek-ai/dsh-tool-acquisition`：该包已声明在 apps/cli 的
+#   dependencies 里，启动时由 dsh 的 healProfilesModuleFallback 自动 link 到
+#   ~/.dsh/profiles/node_modules，因此任意机器 / 任意平台（Windows/Linux/macOS）
+#   都能解析，不再依赖 file:// 绝对路径。
+# - `config` 里的 pythonBin / scriptsDir 用 `!!js` 表达式，基于环境变量 BOBO_ROOT
+#   （指向 BoBo 项目根目录，由 `启动.cmd` / `启动.sh` 自动设置）推导 .venv 与
+#   scripts 路径；未设置时回退到 `python`(PATH) 与相对 `scripts`，便于直接调试。
+#
 # 语法要点（与官方 examples/web-cordis/cordis.yml 一致）：
 # - 新增插件行必须用 `- insert:`；裸的 `- id:` 只会覆盖已存在的行，
-#   若 id 不存在会被**静默跳过**，工具不会加载。
+#   若 id 不存在会被静默跳过，工具不会加载。
 # - `- id: webserver` 那类是“覆盖已有行”的写法，只适用于端口补丁这种改配置场景。
 #
-# 关键：插件 name 必须用 **file: URL** 指向编译产物 lib/index.js。
-# host 层（profile --patch）解析裸包名时从 ~/.dsh/profiles/web/ 出发向上找
-# node_modules，找不到 App workspace 内的自定义包（ERR_MODULE_NOT_FOUND）；
-# 而 file: URL 可直接加载该模块（其 @deepseek-ai/* 依赖经插件自身 symlink
-# 解析到同一实例）。默认 dataDir/scriptsDir 是相对进程 cwd 的，web 下 cwd 会
-# 飘，所以下面必须给绝对路径。
+# !!js 表达式必须用双引号包裹（内含冒号，避免被 YAML 当映射分隔符解析）。
 - insert:
     - id: tool-acquisition
-      name: 'file:///E:/SmartBoBo/BoBo/dsh/packages/acquisition/tool-acquisition/lib/index.js'
+      name: '@deepseek-ai/dsh-tool-acquisition'
       config:
-        pythonBin: E:/SmartBoBo/BoBo/.venv/Scripts/python.exe
-        scriptsDir: E:/SmartBoBo/BoBo/scripts
-        dataDir: E:/SmartBoBo/BoBo/data
+        pythonBin: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + (process.platform === 'win32' ? '/.venv/Scripts/python.exe' : '/.venv/bin/python')) : 'python'"
+        scriptsDir: !!js "process.env.BOBO_ROOT ? (process.env.BOBO_ROOT + '/scripts') : 'scripts'"
+        dataDir: ''
         timeoutMs: 120000

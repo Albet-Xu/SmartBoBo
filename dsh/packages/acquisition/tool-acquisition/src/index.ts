@@ -1,12 +1,13 @@
 /**
- * 采集工具插件 `tool-acquisition`：智能体请求“采集某个网页”时调用。
+ * 采集工具插件 `tool-acquisition`：智能体请求"采集某个网页"时调用。
  *
  * 实现方式（本阶段：Node 编排 + Python 采集双栈）：
  * - 通过 `child_process` 调用本地 Python 脚本（`BoBo/scripts/run_camoufox.py`
  *   （默认）/run_scrapling.py/run_crawl4ai.py），脚本真正抓取网页。
- * - 脚本把**渲染后的完整 HTML** 落盘到本地 `BoBo/data/`（默认以 站点_标题_时间戳.html
+ * - 脚本把**渲染后的内容转换为 Markdown** 落盘到本地（默认以 站点_标题_时间戳.md
  *   命名，不生成 .json）；同时把一行单行 JSON 打到 stdout，这里解析后返回给智能体
- *   （`savedTo`/`status`/`preview`，仅作告知，AI 不读 HTML 内容）。
+ *   （`savedTo`/`status`/`preview`，仅作告知，AI 不读 Markdown 内容）。
+ * - 默认保存位置为当前工作区的 data 文件夹，除非用户明确指定其他位置。
  *
  * 装配方式见 `BoBo/patch/`（`- insert:` 注入 + `- id: webserver` 固定 7070 端口）。
  * 本类工具包无 build 脚本、无 tsdown.config.ts，由根 `tsc -b` + 根 tsdown 统一构建，
@@ -19,6 +20,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
 
 const execFileAsync = promisify(execFile)
 
@@ -30,7 +32,7 @@ export interface Config {
   pythonBin?: string
   /** Python 采集脚本目录（默认 `scripts`）。 */
   scriptsDir?: string
-  /** 采集结果落盘目录（默认 `data`）。 */
+  /** 采集结果落盘目录（默认 `data`）。当为空时，使用当前工作区的 data 文件夹。 */
   dataDir?: string
   /** Python 侧执行超时（毫秒）。 */
   timeoutMs?: number
@@ -39,17 +41,46 @@ export interface Config {
 export const Config: z<Config> = z.object({
   pythonBin: z.string().default('python'),
   scriptsDir: z.string().default('scripts'),
-  dataDir: z.string().default('data'),
+  dataDir: z.string().default(''),
   timeoutMs: z.natural().min(1000).default(120_000),
 })
+
+/**
+ * 获取当前工作区的 data 目录
+ * 如果配置了 dataDir，则使用配置的路径
+ * 否则尝试获取当前工作区路径，返回其下的 data 文件夹
+ */
+function getDataDir(config: Config, workspacePath?: string): string {
+  // 如果配置了 dataDir 且不为空，使用配置的路径
+  if (config.dataDir && config.dataDir.trim() !== '') {
+    return config.dataDir
+  }
+
+  // 尝试获取当前工作区路径
+  if (workspacePath) {
+    const dataDir = join(workspacePath, 'data')
+    // 确保目录存在
+    if (!existsSync(dataDir)) {
+      try {
+        mkdirSync(dataDir, { recursive: true })
+      } catch {
+        // 如果创建失败，回退到默认路径
+      }
+    }
+    return dataDir
+  }
+
+  // 最终回退到 BoBo/data 目录
+  return 'data'
+}
 
 export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(defineTool({
     name: 'crawl_fetch',
     description:
-      'Fetch a webpage with the local Python engine and save the full rendered HTML to the ' +
-      'local data directory (default BoBo/data) as a .html file. Returns the saved path, HTTP ' +
-      'status and a short text preview; the original HTML is the raw data kept on disk.',
+      'Fetch a webpage with the local Python engine, convert the rendered content to Markdown, ' +
+      'and save it to the local data directory. By default, saves to the current workspace\'s ' +
+      'data folder. Returns the saved path, HTTP status and a short text preview.',
     parameters: {
       url: {
         type: 'string',
@@ -67,7 +98,11 @@ export function apply(ctx: Context, config: Config): void {
       },
       outFile: {
         type: 'string',
-        description: 'Optional target .html filename under dataDir; default is auto-generated as 站点_标题_时间戳.html.',
+        description: 'Optional target .md filename; default is auto-generated as 站点_标题_时间戳.md.',
+      },
+      saveDir: {
+        type: 'string',
+        description: 'Optional directory to save the file; default is the current workspace\'s data folder.',
       },
     },
     output: {
@@ -85,13 +120,27 @@ export function apply(ctx: Context, config: Config): void {
         text: `采集完成:\n- 已保存: ${value.savedTo}\n- HTTP状态: ${value.status}\n- 预览: ${value.contentPreview}`,
       }],
     },
-    async execute(args, _exec) {
+    async execute(args, exec) {
       const engine = args.engine ?? 'camoufox'
       const pythonBin = config.pythonBin ?? 'python'
       const scriptsDir = config.scriptsDir ?? 'scripts'
-      const dataDir = config.dataDir ?? 'data'
-      // 由脚本决定落盘文件名：默认 --auto-name（站点_标题_时间戳.html）；
-      // 若调用方指定了 outFile，则作为目标 .html 文件名（其下 .html 扩展名由脚本补全）。
+
+      // 确定保存目录：优先使用用户指定的 saveDir，然后是当前会话的工作区 data 文件夹，最后是配置的 dataDir
+      let dataDir: string
+      if (args.saveDir) {
+        dataDir = args.saveDir
+      } else {
+        // 从当前会话获取工作区路径
+        const sessionCwd = exec.agent?.session.header.cwd
+        if (sessionCwd) {
+          dataDir = getDataDir(config, sessionCwd)
+        } else {
+          dataDir = getDataDir(config)
+        }
+      }
+
+      // 由脚本决定落盘文件名：默认 --auto-name（站点_标题_时间戳.md）；
+      // 若调用方指定了 outFile，则作为目标 .md 文件名（其下 .md 扩展名由脚本补全）。
       const outBase = args.outFile ?? 'crawl_auto'
 
       const scriptArgs = [

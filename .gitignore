@@ -9,3 +9,6 @@ __pycache__/
 # 采集结果（本地数据，不入库）
 data/*
 !data/.gitkeep
+
+# 临时文件
+docs/

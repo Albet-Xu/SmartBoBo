@@ -18,6 +18,8 @@ dependencies = [
     "crawl4ai",
     # 默认抗检测浏览器引擎（从 PyPI 安装）
     "camoufox>=0.5.5",
+    # HTML 转 Markdown 工具
+    "html2text>=2024.2.26",
 ]
 
 [tool.uv.sources]
