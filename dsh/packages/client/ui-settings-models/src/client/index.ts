@@ -122,16 +122,17 @@ export function apply(ctx: ClientContext): void {
     label: () => t('nav'),
     inject: injected,
   }, ModelsSection))
-  ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
-    name: 'settings.onboarding',
-    id: 'welcome-notice',
-    order: -100,
-    inject: welcomeInjected,
-  }, WelcomeNotice))
-  ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
-    name: 'settings.onboarding',
-    id: 'deepseek-official',
-    order: 0,
-    inject: deepSeekOnboardingInjected,
-  }, DeepSeekOnboardingDialog))
+  // 禁用内测声明弹窗和DeepSeek API填写弹窗
+  // ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
+  //   name: 'settings.onboarding',
+  //   id: 'welcome-notice',
+  //   order: -100,
+  //   inject: welcomeInjected,
+  // }, WelcomeNotice))
+  // ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
+  //   name: 'settings.onboarding',
+  //   id: 'deepseek-official',
+  //   order: 0,
+  //   inject: deepSeekOnboardingInjected,
+  // }, DeepSeekOnboardingDialog))
 }
