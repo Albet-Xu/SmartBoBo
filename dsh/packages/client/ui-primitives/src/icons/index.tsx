@@ -870,3 +870,42 @@ export const IconArchiveOutline20 = ({ size = 20, className }: IconProps) => (
     <path d="M12.7962 12.5661V11.0832H7.20548V12.5661L12.7962 12.5661Z" fill="currentColor" />
   </svg>
 )
+
+/** ic_ds_mcp_tools_outline_16: suitcase with MCP text and compass indicator */
+export const IconMcpToolsOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Suitcase body */}
+    <rect x="2" y="5" width="12" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+    {/* Suitcase handle */}
+    <path d="M5.5 5V3.5C5.5 2.94772 5.94772 2.5 6.5 2.5H9.5C10.0523 2.5 10.5 2.94772 10.5 3.5V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    {/* Compass indicator */}
+    <circle cx="8" cy="3.5" r="1" stroke="currentColor" strokeWidth="1" />
+    <path d="M8 2v0.5M8 4.5v0.5M7 3.5h0.5M9.5 3.5h0.5" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+    {/* MCP text */}
+    <text x="8" y="10" textAnchor="middle" fill="currentColor" stroke="none" fontSize="4" fontWeight="bold" fontFamily="Arial, sans-serif">MCP</text>
+    {/* Bottom dots */}
+    <circle cx="5" cy="13" r="0.8" fill="currentColor" />
+    <circle cx="8" cy="13" r="0.8" fill="currentColor" />
+    <circle cx="11" cy="13" r="0.8" fill="currentColor" />
+  </svg>
+)
+
+/** ic_ds_skills_library_outline_16: diamond shape with lightning bolt and connection points */
+export const IconSkillsLibraryOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Diamond shape */}
+    <path d="M8 1L15 8L8 15L1 8L8 1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    {/* Lightning bolt */}
+    <path d="M9 5L7 9H8.5L7.5 12L10 8H8.5L9 5Z" fill="currentColor" />
+    {/* Connection points */}
+    <circle cx="1" cy="8" r="1.2" stroke="currentColor" strokeWidth="1" />
+    <circle cx="15" cy="8" r="1.2" stroke="currentColor" strokeWidth="1" />
+    <circle cx="8" cy="1" r="1.2" stroke="currentColor" strokeWidth="1" />
+    <circle cx="8" cy="15" r="1.2" stroke="currentColor" strokeWidth="1" />
+    {/* Connection lines */}
+    <line x1="2.2" y1="8" x2="6.5" y2="8" stroke="currentColor" strokeWidth="1" />
+    <line x1="9.5" y1="8" x2="13.8" y2="8" stroke="currentColor" strokeWidth="1" />
+    <line x1="8" y1="2.2" x2="8" y2="6.5" stroke="currentColor" strokeWidth="1" />
+    <line x1="8" y1="9.5" x2="8" y2="13.8" stroke="currentColor" strokeWidth="1" />
+  </svg>
+)

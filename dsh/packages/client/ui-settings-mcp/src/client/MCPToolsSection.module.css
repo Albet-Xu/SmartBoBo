@@ -1,0 +1,282 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--dsw-alias-text-primary);
+  margin: 0;
+}
+
+.description {
+  font-size: 14px;
+  color: var(--dsw-alias-text-secondary);
+  margin: 0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.searchBar {
+  flex: 1;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--dsw-alias-border);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--dsw-alias-background);
+  color: var(--dsw-alias-text-primary);
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: var(--dsw-alias-border-focus);
+}
+
+.filterBar {
+  display: flex;
+  gap: 8px;
+}
+
+.filterSelect {
+  padding: 8px 12px;
+  border: 1px solid var(--dsw-alias-border);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--dsw-alias-background);
+  color: var(--dsw-alias-text-primary);
+  outline: none;
+  cursor: pointer;
+}
+
+.installButton {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--dsw-alias-primary);
+  color: white;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.installButton:hover {
+  background: var(--dsw-alias-primary-hover);
+}
+
+.batchActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  background: var(--dsw-alias-background-secondary);
+  border-radius: 6px;
+}
+
+.selectedCount {
+  font-size: 14px;
+  color: var(--dsw-alias-text-secondary);
+  margin-right: 8px;
+}
+
+.batchButton {
+  padding: 6px 12px;
+  border: 1px solid var(--dsw-alias-border);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--dsw-alias-background);
+  color: var(--dsw-alias-text-primary);
+  cursor: pointer;
+}
+
+.batchButton:hover {
+  background: var(--dsw-alias-background-hover);
+}
+
+.batchButtonDanger {
+  padding: 6px 12px;
+  border: 1px solid var(--dsw-alias-error-border);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--dsw-alias-error-background);
+  color: var(--dsw-alias-error-text);
+  cursor: pointer;
+}
+
+.batchButtonDanger:hover {
+  background: var(--dsw-alias-error-background-hover);
+}
+
+.clearButton {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  background: transparent;
+  color: var(--dsw-alias-text-secondary);
+  cursor: pointer;
+}
+
+.clearButton:hover {
+  background: var(--dsw-alias-background-hover);
+}
+
+.listHeader {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0;
+}
+
+.selectAllButton {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  background: transparent;
+  color: var(--dsw-alias-text-secondary);
+  cursor: pointer;
+}
+
+.selectAllButton:hover {
+  background: var(--dsw-alias-background-hover);
+}
+
+.toolsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--dsw-alias-text-primary);
+  margin: 0 0 8px 0;
+}
+
+.emptyHint {
+  font-size: 14px;
+  color: var(--dsw-alias-text-secondary);
+  margin: 0;
+}
+
+.toolCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border);
+  border-radius: 8px;
+  background: var(--dsw-alias-background);
+}
+
+.toolHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.toolInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toolName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dsw-alias-text-primary);
+}
+
+.toolTransport {
+  font-size: 12px;
+  color: var(--dsw-alias-text-secondary);
+}
+
+.toolActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggleSlider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--dsw-alias-border);
+  transition: 0.3s;
+  border-radius: 22px;
+}
+
+.toggleSlider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+input:checked + .toggleSlider {
+  background-color: var(--dsw-alias-primary);
+}
+
+input:checked + .toggleSlider:before {
+  transform: translateX(18px);
+}
+
+.toggleSlider:focus {
+  box-shadow: 0 0 1px var(--dsw-alias-primary);
+}
