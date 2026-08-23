@@ -217,6 +217,8 @@
       "@deepseek-ai/dsh-client-ui-settings": ["./packages/client/ui-settings/src"],
       "@deepseek-ai/dsh-client-ui-settings-general": ["./packages/client/ui-settings-general/src"],
       "@deepseek-ai/dsh-client-ui-settings-models": ["./packages/client/ui-settings-models/src"],
+      "@deepseek-ai/dsh-client-ui-settings-mcp": ["./packages/client/ui-settings-mcp/src"],
+      "@deepseek-ai/dsh-client-ui-settings-skills": ["./packages/client/ui-settings-skills/src"],
       "@deepseek-ai/dsh-client-ui-settings-plugin-inventory": ["./packages/client/ui-settings-plugin-inventory/src"],
       "@deepseek-ai/dsh-client-locale": ["./packages/client/locale/src"],
       "@deepseek-ai/dsh-client-web": ["./packages/client/web/src"],
