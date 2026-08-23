@@ -45,6 +45,14 @@ import {
 } from '../api/workspace.schema.ts'
 import { skillListRequestSchema } from '../api/skills.schema.ts'
 import {
+  skillLibraryCreateGroupRequestSchema, skillLibraryDeleteGroupRequestSchema, skillLibraryInstallLocalRequestSchema,
+  skillLibraryMoveToGroupRequestSchema, skillLibraryRenameGroupRequestSchema, skillLibraryToggleRequestSchema,
+  skillLibraryUninstallRequestSchema,
+} from '../api/skill-library.schema.ts'
+import {
+  mcpInstallRequestSchema, mcpToggleRequestSchema, mcpUninstallRequestSchema,
+} from '../api/mcp.schema.ts'
+import {
   agentPresetCopyRequestSchema, agentPresetListRequestSchema, agentPresetOpenDocumentRequestSchema,
   agentPresetReadRequestSchema, agentPresetRemoveRequestSchema, agentPresetSelectRequestSchema,
 } from '../api/agent-presets.schema.ts'
@@ -117,6 +125,16 @@ const UNARY_ROUTES: UnaryRoutes = {
   'workspace.insertSessionBefore': { schema: workspaceInsertSessionBeforeRequestSchema, invoke: (api, r) => api.workspace.insertSessionBefore(r) },
   'workspace.archiveSession': { schema: workspaceArchiveSessionRequestSchema, invoke: (api, r) => api.workspace.archiveSession(r) },
   'skill.list': { schema: skillListRequestSchema, invoke: (api, r) => api.skills.list(r) },
+  'skillLibrary.installLocal': { schema: skillLibraryInstallLocalRequestSchema, invoke: (api, r) => api.skillLibrary.installLocal(r) },
+  'skillLibrary.toggle': { schema: skillLibraryToggleRequestSchema, invoke: (api, r) => api.skillLibrary.toggle(r) },
+  'skillLibrary.uninstall': { schema: skillLibraryUninstallRequestSchema, invoke: (api, r) => api.skillLibrary.uninstall(r) },
+  'skillLibrary.createGroup': { schema: skillLibraryCreateGroupRequestSchema, invoke: (api, r) => api.skillLibrary.createGroup(r) },
+  'skillLibrary.renameGroup': { schema: skillLibraryRenameGroupRequestSchema, invoke: (api, r) => api.skillLibrary.renameGroup(r) },
+  'skillLibrary.deleteGroup': { schema: skillLibraryDeleteGroupRequestSchema, invoke: (api, r) => api.skillLibrary.deleteGroup(r) },
+  'skillLibrary.moveToGroup': { schema: skillLibraryMoveToGroupRequestSchema, invoke: (api, r) => api.skillLibrary.moveToGroup(r) },
+  'mcp.install': { schema: mcpInstallRequestSchema, invoke: (api, r) => api.mcp.install(r) },
+  'mcp.toggle': { schema: mcpToggleRequestSchema, invoke: (api, r) => api.mcp.toggle(r) },
+  'mcp.uninstall': { schema: mcpUninstallRequestSchema, invoke: (api, r) => api.mcp.uninstall(r) },
   'agentPreset.list': { schema: agentPresetListRequestSchema, invoke: (api, r) => api.agentPresets.list(r) },
   'agentPreset.select': { schema: agentPresetSelectRequestSchema, invoke: (api, r) => api.agentPresets.select(r) },
   'agentPreset.read': { schema: agentPresetReadRequestSchema, invoke: (api, r) => api.agentPresets.read(r) },

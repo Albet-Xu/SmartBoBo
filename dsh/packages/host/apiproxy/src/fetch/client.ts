@@ -42,6 +42,14 @@ import {
 } from '../api/workspace.schema.ts'
 import { skillListValueSchema } from '../api/skills.schema.ts'
 import {
+  skillLibraryCreateGroupValueSchema, skillLibraryDeleteGroupValueSchema, skillLibraryInstallLocalValueSchema,
+  skillLibraryMoveToGroupValueSchema, skillLibraryRenameGroupValueSchema, skillLibraryToggleValueSchema,
+  skillLibraryUninstallValueSchema,
+} from '../api/skill-library.schema.ts'
+import {
+  mcpInstallValueSchema, mcpToggleValueSchema, mcpUninstallValueSchema,
+} from '../api/mcp.schema.ts'
+import {
   agentPresetCopyValueSchema, agentPresetListValueSchema, agentPresetOpenDocumentValueSchema,
   agentPresetReadValueSchema, agentPresetRemoveValueSchema, agentPresetSelectValueSchema,
 } from '../api/agent-presets.schema.ts'
@@ -124,6 +132,20 @@ export interface IApiClient {
   skills: {
     list(payload: RequestPayload<'skill.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skill.list'>>>
   }
+  skillLibrary: {
+    installLocal(payload: RequestPayload<'skillLibrary.installLocal'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.installLocal'>>>
+    toggle(payload: RequestPayload<'skillLibrary.toggle'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.toggle'>>>
+    uninstall(payload: RequestPayload<'skillLibrary.uninstall'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.uninstall'>>>
+    createGroup(payload: RequestPayload<'skillLibrary.createGroup'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.createGroup'>>>
+    renameGroup(payload: RequestPayload<'skillLibrary.renameGroup'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.renameGroup'>>>
+    deleteGroup(payload: RequestPayload<'skillLibrary.deleteGroup'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.deleteGroup'>>>
+    moveToGroup(payload: RequestPayload<'skillLibrary.moveToGroup'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.moveToGroup'>>>
+  }
+  mcp: {
+    install(payload: RequestPayload<'mcp.install'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'mcp.install'>>>
+    toggle(payload: RequestPayload<'mcp.toggle'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'mcp.toggle'>>>
+    uninstall(payload: RequestPayload<'mcp.uninstall'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'mcp.uninstall'>>>
+  }
   agentPresets: {
     list(payload: RequestPayload<'agentPreset.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'agentPreset.list'>>>
     select(payload: RequestPayload<'agentPreset.select'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'agentPreset.select'>>>
@@ -199,6 +221,16 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'workspace.insertSessionBefore': workspaceInsertSessionBeforeValueSchema,
   'workspace.archiveSession': workspaceArchiveSessionValueSchema,
   'skill.list': skillListValueSchema,
+  'skillLibrary.installLocal': skillLibraryInstallLocalValueSchema,
+  'skillLibrary.toggle': skillLibraryToggleValueSchema,
+  'skillLibrary.uninstall': skillLibraryUninstallValueSchema,
+  'skillLibrary.createGroup': skillLibraryCreateGroupValueSchema,
+  'skillLibrary.renameGroup': skillLibraryRenameGroupValueSchema,
+  'skillLibrary.deleteGroup': skillLibraryDeleteGroupValueSchema,
+  'skillLibrary.moveToGroup': skillLibraryMoveToGroupValueSchema,
+  'mcp.install': mcpInstallValueSchema,
+  'mcp.toggle': mcpToggleValueSchema,
+  'mcp.uninstall': mcpUninstallValueSchema,
   'agentPreset.list': agentPresetListValueSchema,
   'agentPreset.select': agentPresetSelectValueSchema,
   'agentPreset.read': agentPresetReadValueSchema,
@@ -455,6 +487,22 @@ export abstract class AbstractApiClient implements IApiClient {
 
   readonly skills: IApiClient['skills'] = {
     list: (payload, signal) => this.callUnary('skill.list', payload, signal),
+  }
+
+  readonly skillLibrary: IApiClient['skillLibrary'] = {
+    installLocal: (payload, signal) => this.callUnary('skillLibrary.installLocal', payload, signal),
+    toggle: (payload, signal) => this.callUnary('skillLibrary.toggle', payload, signal),
+    uninstall: (payload, signal) => this.callUnary('skillLibrary.uninstall', payload, signal),
+    createGroup: (payload, signal) => this.callUnary('skillLibrary.createGroup', payload, signal),
+    renameGroup: (payload, signal) => this.callUnary('skillLibrary.renameGroup', payload, signal),
+    deleteGroup: (payload, signal) => this.callUnary('skillLibrary.deleteGroup', payload, signal),
+    moveToGroup: (payload, signal) => this.callUnary('skillLibrary.moveToGroup', payload, signal),
+  }
+
+  readonly mcp: IApiClient['mcp'] = {
+    install: (payload, signal) => this.callUnary('mcp.install', payload, signal),
+    toggle: (payload, signal) => this.callUnary('mcp.toggle', payload, signal),
+    uninstall: (payload, signal) => this.callUnary('mcp.uninstall', payload, signal),
   }
 
   // Annotated like every sibling, and load-bearing rather than cosmetic:

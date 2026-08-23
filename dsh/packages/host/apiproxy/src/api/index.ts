@@ -9,6 +9,8 @@ import type { HostApi } from './host.ts'
 import type { WorkspaceApi } from './workspace.ts'
 import type { AgentPresetsApi } from './agent-presets.ts'
 import type { SkillsApi } from './skills.ts'
+import type { SkillLibraryApi } from './skill-library.ts'
+import type { McpApi } from './mcp.ts'
 import type { SubagentsApi } from './subagents.ts'
 import type { EventsApi } from './events.ts'
 import type { GoalsApi } from './goals.ts'
@@ -25,6 +27,8 @@ export interface ApiProxy {
   host: HostApi
   workspace: WorkspaceApi
   skills: SkillsApi
+  skillLibrary: SkillLibraryApi
+  mcp: McpApi
   agentPresets: AgentPresetsApi
   events: EventsApi
   goals: GoalsApi
@@ -55,6 +59,8 @@ export type {
 export type { JobView } from './jobs.ts'
 export type { WorkspaceApi, WorkspaceId, WorkspaceView } from './workspace.ts'
 export type { SkillsApi, SkillEntry } from './skills.ts'
+export type { SkillLibraryApi, SkillLibraryEntry, SkillLibraryGroup, SkillLibrarySettings, SkillLibrarySource } from './skill-library.ts'
+export type { McpApi, McpReconnectView, McpToolConfigView, McpToolEntryView, McpToolsSettings } from './mcp.ts'
 export type { AgentPresetsApi, AgentPresetEntry } from './agent-presets.ts'
 export type { EventsApi, MuxFrame, HostFrame, QueuedInboxItem, ToolCallView, ToolEventView, ToolResultView } from './events.ts'
 export type { GoalsApi, GoalId, GoalRef } from './goals.ts'

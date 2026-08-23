@@ -22,6 +22,8 @@ function scriptedApi(overrides: {
   subagents?: Partial<ApiProxy['subagents']>
   host?: Partial<ApiProxy['host']>
   skills?: Partial<ApiProxy['skills']>
+  skillLibrary?: Partial<ApiProxy['skillLibrary']>
+  mcp?: Partial<ApiProxy['mcp']>
   agentPresets?: Partial<ApiProxy['agentPresets']>
   events?: Partial<ApiProxy['events']>
   goals?: Partial<ApiProxy['goals']>
@@ -90,6 +92,22 @@ function scriptedApi(overrides: {
       archiveSession: r => ok(r, { archivedSessionIds: [r.payload.sessionId] }),
     },
     skills: { list: r => ok(r, { skills: [] }), ...overrides.skills },
+    skillLibrary: {
+      installLocal: r => ok(r, { ok: true }),
+      toggle: r => ok(r, { ok: true }),
+      uninstall: r => ok(r, { ok: true }),
+      createGroup: r => ok(r, { ok: true }),
+      renameGroup: r => ok(r, { ok: true }),
+      deleteGroup: r => ok(r, { ok: true }),
+      moveToGroup: r => ok(r, { ok: true }),
+      ...overrides.skillLibrary,
+    },
+    mcp: {
+      install: r => ok(r, { ok: true }),
+      toggle: r => ok(r, { ok: true }),
+      uninstall: r => ok(r, { ok: true }),
+      ...overrides.mcp,
+    },
     agentPresets: {
       list: r => ok(r, { presets: [], authorable: false, hasDocument: false }),
       select: r => ok(r, { agentPreset: r.payload.agentPreset }),

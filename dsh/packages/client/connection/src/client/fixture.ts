@@ -2789,6 +2789,20 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         })
       },
     },
+    skillLibrary: {
+      installLocal: request => ok(request, { ok: true as const }),
+      toggle: request => ok(request, { ok: true as const }),
+      uninstall: request => ok(request, { ok: true as const }),
+      createGroup: request => ok(request, { ok: true as const }),
+      renameGroup: request => ok(request, { ok: true as const }),
+      deleteGroup: request => ok(request, { ok: true as const }),
+      moveToGroup: request => ok(request, { ok: true as const }),
+    },
+    mcp: {
+      install: request => ok(request, { ok: true as const }),
+      toggle: request => ok(request, { ok: true as const }),
+      uninstall: request => ok(request, { ok: true as const }),
+    },
     goals: {
       // Compatibility face only: old API Proxy payloads and acknowledgements
       // adapt to the canonical fixture Remote implementation above.
@@ -3106,6 +3120,16 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'workspace.insertSessionBefore': return this.api.workspace.insertSessionBefore(request)
       case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
       case 'skill.list': return this.api.skills.list(request)
+      case 'skillLibrary.installLocal': return this.api.skillLibrary.installLocal(request)
+      case 'skillLibrary.toggle': return this.api.skillLibrary.toggle(request)
+      case 'skillLibrary.uninstall': return this.api.skillLibrary.uninstall(request)
+      case 'skillLibrary.createGroup': return this.api.skillLibrary.createGroup(request)
+      case 'skillLibrary.renameGroup': return this.api.skillLibrary.renameGroup(request)
+      case 'skillLibrary.deleteGroup': return this.api.skillLibrary.deleteGroup(request)
+      case 'skillLibrary.moveToGroup': return this.api.skillLibrary.moveToGroup(request)
+      case 'mcp.install': return this.api.mcp.install(request)
+      case 'mcp.toggle': return this.api.mcp.toggle(request)
+      case 'mcp.uninstall': return this.api.mcp.uninstall(request)
       case 'agentPreset.list': return this.api.agentPresets.list(request)
       case 'agentPreset.select': return this.api.agentPresets.select(request)
       case 'agentPreset.read': return this.api.agentPresets.read(request)

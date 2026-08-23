@@ -223,6 +223,40 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
         return { rpcId: request.rpcId, result: { ok: true, value: { skills: [{ name: 'commit-helper', description: 'Git commits', modelInvocable: true }] } } }
       },
     },
+    skillLibrary: {
+      async installLocal(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+      async toggle(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+      async uninstall(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+      async createGroup(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+      async renameGroup(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+      async deleteGroup(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+      async moveToGroup(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+    },
+    mcp: {
+      async install(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+      async toggle(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+      async uninstall(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
+      },
+    },
     goals: {
       async create(request) {
         return { rpcId: request.rpcId, result: { ok: false, error: { code: 'internal', message: 'stub', details: {} } } }

@@ -17,6 +17,7 @@
     { "path": "../../api/remotes/tsconfig.client.json" },
     { "path": "../ui-slots" },
     { "path": "../web-react" },
+    { "path": "../../settings/settings" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]
 }

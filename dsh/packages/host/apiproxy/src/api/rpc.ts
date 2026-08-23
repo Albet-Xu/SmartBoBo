@@ -92,6 +92,13 @@ export interface RpcErrorDetailsMap {
   'subagent-not-resumable': { childSessionId: SessionId }
   'subagent-unauthorized': { childSessionId: SessionId }
   'subagent-delivery-unavailable': { childSessionId: SessionId }
+  'settings-unavailable': {}
+  'skill-install-failed': { reason: string }
+  'skill-not-found': { name: string }
+  'skill-group-not-found': { id: string }
+  'mcp-install-failed': { reason: string }
+  'mcp-config-rejected': { reason: string }
+  'mcp-tool-not-found': { id: string }
   'internal': {}
 }
 

@@ -1,5 +1,8 @@
 /**
- * MCP Tools state management: handles tool configuration, status, and operations.
+ * MCP Tools state management: coordinates the web MCP tool manager. All
+ * mutations go through the `mcp.*` RPCs — `install` writes an mcp-client row
+ * to the home cordis overlay plus the host `mcp-tools` settings namespace;
+ * `load` reads that namespace via `settings.describe`.
  * @module @deepseek-ai/dsh-client-ui-settings-mcp/store
  */
 
@@ -49,6 +52,42 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function isStringMap(value: unknown): value is Record<string, string> {
+  return typeof value === 'object' && value !== null && Object.values(value).every(item => typeof item === 'string')
+}
+
+type MCPReconnect = NonNullable<MCPToolConfig['reconnect']>
+
+function isReconnect(value: unknown): value is MCPReconnect {
+  if (typeof value !== 'object' || value === null) return false
+  const rec = value as Record<string, unknown>
+  return typeof rec['enabled'] === 'boolean'
+}
+
+/** Narrow one settings row to a {@link MCPToolConfig}, or none when malformed. */
+function toMcpTool(raw: unknown): MCPToolConfig[] {
+  if (typeof raw !== 'object' || raw === null) return []
+  const rec = raw as Record<string, unknown>
+  if (typeof rec['id'] !== 'string' || typeof rec['serverName'] !== 'string') return []
+  const transport = rec['transport'] === 'streamable-http' ? 'streamable-http' : 'stdio'
+  const reconnect = rec['reconnect']
+  return [{
+    id: rec['id'],
+    serverName: rec['serverName'],
+    transport,
+    ...typeof rec['command'] === 'string' ? { command: rec['command'] } : {},
+    ...Array.isArray(rec['args']) ? { args: rec['args'] as string[] } : {},
+    ...isStringMap(rec['env']) ? { env: rec['env'] } : {},
+    ...typeof rec['cwd'] === 'string' ? { cwd: rec['cwd'] } : {},
+    ...typeof rec['url'] === 'string' ? { url: rec['url'] } : {},
+    ...isStringMap(rec['headers']) ? { headers: rec['headers'] } : {},
+    ...typeof rec['toolCallTimeoutMs'] === 'number' ? { toolCallTimeoutMs: rec['toolCallTimeoutMs'] } : {},
+    ...typeof rec['failOnStartupError'] === 'boolean' ? { failOnStartupError: rec['failOnStartupError'] } : {},
+    ...isReconnect(reconnect) ? { reconnect: reconnect } : {},
+    enabled: typeof rec['enabled'] === 'boolean' ? rec['enabled'] : true,
+  }]
+}
+
 /** Coordinates MCP Tools operations. */
 export class MCPToolsStore {
   /** uSES-safe state source. */
@@ -62,55 +101,28 @@ export class MCPToolsStore {
   private generation = 0
 
   constructor(
-    _api: Pick<IApiClient, 'settings'>,
+    private readonly api: Pick<IApiClient, 'settings' | 'mcp'>,
   ) {}
 
-  /** Load MCP tools configuration. */
+  /** Load MCP tools from the host `mcp-tools` settings namespace. */
   async load(): Promise<void> {
     const generation = ++this.generation
     this.store.update((state) => { state.status = 'loading'; state.error = null })
     try {
-      // 默认MCP工具配置
-      const defaultTools: MCPToolConfig[] = [
-        {
-          id: 'js-reverse',
-          serverName: 'js-reverse',
-          transport: 'stdio',
-          command: 'npx',
-          args: ['-y', 'js-reverse'],
-          enabled: true,
-          toolCallTimeoutMs: 120000,
-          reconnect: {
-            enabled: true,
-            initialDelayMs: 500,
-            maxDelayMs: 30000,
-            maxAttempts: 10,
-          },
-        },
-      ]
-      
-      let tools: MCPToolConfig[] = defaultTools
-      
-      // 尝试从后端API获取MCP工具配置
-      try {
-        const response = await fetch('/api/mcp-tools')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.tools && Array.isArray(data.tools) && data.tools.length > 0) {
-            tools = data.tools
-          }
-        }
-      } catch {
-        // API不存在或请求失败，使用默认配置
+      const response = await this.api.settings.describe({})
+      if (!response.result.ok) throw new Error(response.result.error.message)
+      let toolsRaw: unknown[] = []
+      const ns = response.result.value.namespaces.find(candidate => candidate.ns === 'mcp-tools')
+      if (ns !== undefined && typeof ns.value === 'object' && ns.value !== null) {
+        const section = ns.value as { tools?: unknown }
+        if (Array.isArray(section.tools)) toolsRaw = section.tools
       }
-      
-      const toolStatuses = new Map<string, MCPToolStatus>()
-      
+      const tools = toolsRaw.flatMap(toMcpTool)
       if (generation !== this.generation) return
       this.store.update((state) => {
         state.status = 'ready'
         state.tools = tools
-        state.toolStatuses = toolStatuses
+        state.toolStatuses = new Map()
         state.error = null
       })
     } catch (error) {
@@ -133,13 +145,12 @@ export class MCPToolsStore {
     const generation = ++this.generation
     this.store.update((state) => { state.status = 'saving'; state.error = null })
     try {
-      // TODO: Implement actual API call
+      const response = await this.api.mcp.toggle({ id, enabled })
+      if (!response.result.ok) throw new Error(response.result.error.message)
       if (generation !== this.generation) return false
       this.store.update((state) => {
         state.status = 'ready'
-        state.tools = state.tools.map(tool =>
-          tool.id === id ? { ...tool, enabled } : tool
-        )
+        state.tools = state.tools.map(tool => tool.id === id ? { ...tool, enabled } : tool)
         state.error = null
       })
       return true
@@ -153,23 +164,17 @@ export class MCPToolsStore {
     }
   }
 
-  /** Batch toggle MCP tools. */
+  /** Batch toggle MCP tools, then reload the authoritative list. */
   async batchToggle(ids: string[], enabled: boolean): Promise<boolean> {
-    const generation = ++this.generation
     this.store.update((state) => { state.status = 'saving'; state.error = null })
     try {
-      // TODO: Implement actual API call
-      if (generation !== this.generation) return false
-      this.store.update((state) => {
-        state.status = 'ready'
-        state.tools = state.tools.map(tool =>
-          ids.includes(tool.id) ? { ...tool, enabled } : tool
-        )
-        state.error = null
-      })
+      for (const id of ids) {
+        const response = await this.api.mcp.toggle({ id, enabled })
+        if (!response.result.ok) throw new Error(response.result.error.message)
+      }
+      await this.load()
       return true
     } catch (error) {
-      if (generation !== this.generation) return false
       this.store.update((state) => {
         state.status = 'error'
         state.error = messageOf(error)
@@ -178,22 +183,18 @@ export class MCPToolsStore {
     }
   }
 
-  /** Install MCP tool. */
+  /** Install MCP tool: write mcp-client config and record it in settings. */
   async install(config: Omit<MCPToolConfig, 'id'>): Promise<string | null> {
-    const generation = ++this.generation
     this.store.update((state) => { state.status = 'saving'; state.error = null })
     try {
-      // TODO: Implement actual API call
-      const id = `mcp-${Date.now()}`
-      if (generation !== this.generation) return null
-      this.store.update((state) => {
-        state.status = 'ready'
-        state.tools = [...state.tools, { ...config, id }]
-        state.error = null
-      })
+      // `enabled` is a manager-list concept; the RPC sets it true on install.
+      const { enabled: _enabled, ...connection } = config
+      const response = await this.api.mcp.install({ config: connection })
+      if (!response.result.ok) throw new Error(response.result.error.message)
+      const id = connection.serverName
+      await this.load()
       return id
     } catch (error) {
-      if (generation !== this.generation) return null
       this.store.update((state) => {
         state.status = 'error'
         state.error = messageOf(error)
@@ -202,21 +203,15 @@ export class MCPToolsStore {
     }
   }
 
-  /** Uninstall MCP tool. */
+  /** Uninstall MCP tool (removes it from the settings list). */
   async uninstall(id: string): Promise<boolean> {
-    const generation = ++this.generation
     this.store.update((state) => { state.status = 'saving'; state.error = null })
     try {
-      // TODO: Implement actual API call
-      if (generation !== this.generation) return false
-      this.store.update((state) => {
-        state.status = 'ready'
-        state.tools = state.tools.filter(tool => tool.id !== id)
-        state.error = null
-      })
+      const response = await this.api.mcp.uninstall({ id })
+      if (!response.result.ok) throw new Error(response.result.error.message)
+      await this.load()
       return true
     } catch (error) {
-      if (generation !== this.generation) return false
       this.store.update((state) => {
         state.status = 'error'
         state.error = messageOf(error)
@@ -227,19 +222,15 @@ export class MCPToolsStore {
 
   /** Batch uninstall MCP tools. */
   async batchUninstall(ids: string[]): Promise<boolean> {
-    const generation = ++this.generation
     this.store.update((state) => { state.status = 'saving'; state.error = null })
     try {
-      // TODO: Implement actual API call
-      if (generation !== this.generation) return false
-      this.store.update((state) => {
-        state.status = 'ready'
-        state.tools = state.tools.filter(tool => !ids.includes(tool.id))
-        state.error = null
-      })
+      for (const id of ids) {
+        const response = await this.api.mcp.uninstall({ id })
+        if (!response.result.ok) throw new Error(response.result.error.message)
+      }
+      await this.load()
       return true
     } catch (error) {
-      if (generation !== this.generation) return false
       this.store.update((state) => {
         state.status = 'error'
         state.error = messageOf(error)

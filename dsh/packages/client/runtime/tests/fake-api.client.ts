@@ -248,6 +248,22 @@ export class FakeApiClient implements IApiClient {
     list: (payload: unknown) => this.record('skill.list', payload, this.onSkillList(payload)),
   }
 
+  readonly skillLibrary: IApiClient['skillLibrary'] = {
+    installLocal: (payload: unknown) => this.record('skillLibrary.installLocal', payload, Promise.resolve(ok({ ok: true as const }))),
+    toggle: (payload: unknown) => this.record('skillLibrary.toggle', payload, Promise.resolve(ok({ ok: true as const }))),
+    uninstall: (payload: unknown) => this.record('skillLibrary.uninstall', payload, Promise.resolve(ok({ ok: true as const }))),
+    createGroup: (payload: unknown) => this.record('skillLibrary.createGroup', payload, Promise.resolve(ok({ ok: true as const }))),
+    renameGroup: (payload: unknown) => this.record('skillLibrary.renameGroup', payload, Promise.resolve(ok({ ok: true as const }))),
+    deleteGroup: (payload: unknown) => this.record('skillLibrary.deleteGroup', payload, Promise.resolve(ok({ ok: true as const }))),
+    moveToGroup: (payload: unknown) => this.record('skillLibrary.moveToGroup', payload, Promise.resolve(ok({ ok: true as const }))),
+  }
+
+  readonly mcp: IApiClient['mcp'] = {
+    install: (payload: unknown) => this.record('mcp.install', payload, Promise.resolve(ok({ ok: true as const }))),
+    toggle: (payload: unknown) => this.record('mcp.toggle', payload, Promise.resolve(ok({ ok: true as const }))),
+    uninstall: (payload: unknown) => this.record('mcp.uninstall', payload, Promise.resolve(ok({ ok: true as const }))),
+  }
+
   readonly goals: IApiClient['goals'] = {
     create: payload => this.record('goal.create', payload, Promise.resolve(ok({ ref: { id: 'fake-goal' as never, revision: 1 } }))),
     edit: payload => this.record('goal.edit', payload, Promise.resolve(ok({ ref: { id: 'fake-goal' as never, revision: 1 } }))),

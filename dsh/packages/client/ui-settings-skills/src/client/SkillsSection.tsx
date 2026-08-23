@@ -4,13 +4,17 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SkillsState } from './store.ts'
 import { SkillsStore } from './store.ts'
+import styles from './SkillsSection.module.css'
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
+/** Sentinel select value representing the ungrouped bucket in the move-to-group control. */
+const UNGROUPED_VALUE = '__ungrouped__'
 
 /** Registration-side dependencies of {@link SkillsSection}. */
 export interface SkillsSectionInjected {
@@ -18,7 +22,7 @@ export interface SkillsSectionInjected {
     skills: SnapshotStore<SkillsState>
   }
   controller: SkillsStore
-  api: Pick<IApiClient, 'settings' | 'credentials' | 'llm'>
+  api: Pick<IApiClient, 'host' | 'skillLibrary'>
 }
 
 /** Full component props: section owner share plus item render share. */
@@ -27,22 +31,54 @@ export type SkillsSectionProps =
   & PropsLocale<'settings.skills'>
   & InjectFace<SkillsSectionInjected>
 
+/** Active group filter: every group, the ungrouped bucket, or one group id. */
+type ActiveGroup = 'all' | 'ungrouped' | string
+
 /**
  * Render the Skills Library section content.
  * @param props - composed slot props.
  * @returns the section element tree.
  */
 export function SkillsSection(props: SkillsSectionProps): ReactNode {
-  const { controller, useSkills, t } = props
+  const { controller, api, useSkills, t } = props
   const state = useSkills(snapshot => snapshot)
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'enabled' | 'disabled'>('all')
   const [filterSource, setFilterSource] = useState<'all' | 'local' | 'http' | 'github' | 'runtime'>('all')
+  const [activeGroup, setActiveGroup] = useState<ActiveGroup>('all')
+  const [showNewGroup, setShowNewGroup] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [renameGroupId, setRenameGroupId] = useState<string | null>(null)
+  const [renameGroupName, setRenameGroupName] = useState('')
+  const [moveGroupId, setMoveGroupId] = useState('')
+  const [feedback, setFeedback] = useState('')
 
   useEffect(() => {
     if (state.status === 'idle' || state.skills.length === 0) void controller.load()
   }, [controller, state.status, state.skills.length])
+
+  const statusMatched = (skill: any): boolean => {
+    if (filterStatus === 'enabled') return skill.enabled
+    if (filterStatus === 'disabled') return !skill.enabled
+    return true
+  }
+
+  const groupMatched = (skill: any): boolean => {
+    if (activeGroup === 'all') return true
+    if (activeGroup === 'ungrouped') return skill.group == null
+    return skill.group === activeGroup
+  }
+
+  const filteredSkills = state.skills.filter((skill: any) =>
+    statusMatched(skill)
+  ).filter((skill: any) =>
+    filterSource === 'all' || skill.source === filterSource
+  ).filter((skill: any) =>
+    searchQuery === '' ||
+    skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    skill.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  ).filter((skill: any) => groupMatched(skill))
 
   const handleToggle = useCallback(async (name: string, enabled: boolean) => {
     await controller.toggle(name, enabled)
@@ -60,20 +96,53 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
     setSelectedSkills(new Set())
   }, [controller, selectedSkills])
 
+  const handleInstall = useCallback(async () => {
+    setFeedback('')
+    const pick = await api.host.pickDirectory({})
+    if (!pick.result.ok) {
+      setFeedback(t('installError').replace('{name}', '').replace('{error}', pick.result.error.message))
+      return
+    }
+    const path = pick.result.value.path
+    if (path === null) return
+    const okResult = await controller.installFromLocal(path)
+    if (!okResult) setFeedback(controller.store.getSnapshot().error ?? t('installError'))
+    else setFeedback(t('success'))
+  }, [api, controller, t])
+
+  const handleNewGroup = useCallback(async () => {
+    const name = newGroupName.trim()
+    if (name === '') return
+    await controller.createGroup(name)
+    setNewGroupName('')
+    setShowNewGroup(false)
+    setFeedback('')
+  }, [controller, newGroupName])
+
+  const submitRename = useCallback(async (id: string) => {
+    const name = renameGroupName.trim()
+    setRenameGroupId(null)
+    if (name === '') return
+    await controller.renameGroup(id, name)
+  }, [controller, renameGroupName])
+
+  const handleDeleteGroup = useCallback(async (id: string, name: string) => {
+    if (!window.confirm(t('confirmDeleteGroup').replace('{name}', name))) return
+    await controller.deleteGroup(id)
+    if (activeGroup === id) setActiveGroup('all')
+  }, [controller, activeGroup, t])
+
+  const handleMoveToGroup = useCallback(async () => {
+    if (moveGroupId === '') return
+    const target = moveGroupId === UNGROUPED_VALUE ? null : moveGroupId
+    await controller.moveToGroup(Array.from(selectedSkills), target)
+    setSelectedSkills(new Set())
+    setMoveGroupId('')
+  }, [controller, selectedSkills, moveGroupId])
+
   const handleSelectAll = useCallback(() => {
-    const filteredSkills = state.skills.filter((skill: any) => {
-      if (filterStatus === 'enabled') return skill.enabled
-      if (filterStatus === 'disabled') return !skill.enabled
-      return true
-    }).filter((skill: any) =>
-      filterSource === 'all' || skill.source === filterSource
-    ).filter((skill: any) =>
-      searchQuery === '' ||
-      skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      skill.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    setSelectedSkills(new Set(filteredSkills.map((skill: any) => skill.name)))
-  }, [state.skills, filterStatus, filterSource, searchQuery])
+    setSelectedSkills(new Set(filteredSkills.map(skill => skill.name)))
+  }, [filteredSkills])
 
   const handleClearSelection = useCallback(() => {
     setSelectedSkills(new Set())
@@ -91,17 +160,20 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
     })
   }, [])
 
-  const filteredSkills = state.skills.filter((skill: any) => {
-    if (filterStatus === 'enabled') return skill.enabled
-    if (filterStatus === 'disabled') return !skill.enabled
-    return true
-  }).filter((skill: any) =>
-    filterSource === 'all' || skill.source === filterSource
-  ).filter((skill: any) =>
-    searchQuery === '' ||
-    skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    skill.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const groupTabStyle = (selected: boolean): CSSProperties => ({
+    padding: '6px 14px',
+    border: selected ? '1px solid #0066cc' : '1px solid #ccc',
+    borderRadius: '999px',
+    fontSize: '13px',
+    background: selected ? '#0066cc' : 'white',
+    color: selected ? 'white' : '#333',
+    cursor: 'pointer',
+  })
+
+  const smallIconStyle: CSSProperties = {
+    border: 'none', background: 'transparent', color: '#999', cursor: 'pointer',
+    padding: '0 2px', fontSize: '13px', lineHeight: 1,
+  }
 
   return (
     <div style={{ padding: '16px' }}>
@@ -110,7 +182,7 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
         <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>{t('description')}</p>
       </div>
 
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
         <input
           type="text"
           placeholder={t('search')}
@@ -119,18 +191,18 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
           style={{ flex: 1, padding: '8px 12px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px' }}
         />
         <select
+          className={styles.filterSelect}
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-          style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px' }}
         >
           <option value="all">{t('filterAll')}</option>
           <option value="enabled">{t('filterEnabled')}</option>
           <option value="disabled">{t('filterDisabled')}</option>
         </select>
         <select
+          className={styles.filterSelect}
           value={filterSource}
           onChange={(e) => setFilterSource(e.target.value as typeof filterSource)}
-          style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px' }}
         >
           <option value="all">{t('filterAll')}</option>
           <option value="local">{t('filterLocal')}</option>
@@ -140,15 +212,72 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
         </select>
         <button
           type="button"
-          style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 500, background: '#0066cc', color: 'white', cursor: 'pointer' }}
+          onClick={handleInstall}
+          style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 500, background: '#0066cc', color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
           {t('install')}
         </button>
       </div>
 
+      {(feedback !== '' || state.error !== null) && (
+        <div style={{ marginBottom: '12px', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', background: '#fff0f0', color: '#ff4444' }}>
+          {feedback || state.error}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
+        <button type="button" onClick={() => setActiveGroup('all')} style={groupTabStyle(activeGroup === 'all')}>{t('groupAll')}</button>
+        <button type="button" onClick={() => setActiveGroup('ungrouped')} style={groupTabStyle(activeGroup === 'ungrouped')}>{t('groupUngrouped')}</button>
+        {state.groups.map(group => (
+          <span key={group.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+            <button type="button" onClick={() => setActiveGroup(group.id)} style={groupTabStyle(activeGroup === group.id)}>{group.name}</button>
+            {renameGroupId === group.id ? (
+              <>
+                <input
+                  autoFocus
+                  value={renameGroupName}
+                  onChange={(e) => setRenameGroupName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void submitRename(group.id)
+                    if (e.key === 'Escape') setRenameGroupId(null)
+                  }}
+                  style={{ width: '90px', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '13px' }}
+                />
+                <button type="button" onClick={() => void submitRename(group.id)} style={smallIconStyle}>✓</button>
+                <button type="button" onClick={() => setRenameGroupId(null)} style={smallIconStyle}>✕</button>
+              </>
+            ) : (
+              <>
+                <button type="button" title={t('renameGroup')} onClick={() => { setRenameGroupId(group.id); setRenameGroupName(group.name) }} style={smallIconStyle}>✎</button>
+                <button type="button" title={t('deleteGroup')} onClick={() => void handleDeleteGroup(group.id, group.name)} style={{ ...smallIconStyle, color: '#ff4444' }}>✕</button>
+              </>
+            )}
+          </span>
+        ))}
+        {showNewGroup ? (
+          <>
+            <input
+              autoFocus
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleNewGroup()
+                if (e.key === 'Escape') { setShowNewGroup(false); setNewGroupName('') }
+              }}
+              placeholder={t('groupNamePlaceholder')}
+              style={{ padding: '6px 10px', border: '1px solid #0066cc', borderRadius: '999px', fontSize: '13px' }}
+            />
+            <button type="button" onClick={() => void handleNewGroup()} style={{ ...groupTabStyle(true), padding: '6px 10px' }}>✓</button>
+            <button type="button" onClick={() => { setShowNewGroup(false); setNewGroupName('') }} style={smallIconStyle}>✕</button>
+          </>
+        ) : (
+          <button type="button" onClick={() => setShowNewGroup(true)} style={{ ...groupTabStyle(false), borderColor: '#0066cc', color: '#0066cc' }}>+ {t('newGroup')}</button>
+        )}
+      </div>
+
       {selectedSkills.size > 0 && (
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', background: '#f5f5f5', borderRadius: '6px', marginBottom: '16px' }}>
-          <span style={{ fontSize: '14px', color: '#666', marginRight: '8px' }}>{`已选择 ${selectedSkills.size} 个技能`}</span>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', background: '#f5f5f5', borderRadius: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '14px', color: '#666', marginRight: '8px' }}>{t('selectedItems').replace('{count}', String(selectedSkills.size))}</span>
           <button
             type="button"
             onClick={() => handleBatchToggle(true)}
@@ -162,6 +291,25 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
             style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '13px', background: 'white', cursor: 'pointer' }}
           >
             {t('batchDisable')}
+          </button>
+          <select
+            value={moveGroupId}
+            onChange={(e) => setMoveGroupId(e.target.value)}
+            style={{ padding: '6px 8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '13px', background: 'white' }}
+          >
+            <option value="">{t('moveToGroup')}</option>
+            <option value={UNGROUPED_VALUE}>{t('groupUngrouped')}</option>
+            {state.groups.map(group => (
+              <option key={group.id} value={group.id}>{group.name}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleMoveToGroup}
+            disabled={moveGroupId === ''}
+            style={{ padding: '6px 12px', border: '1px solid #0066cc', borderRadius: '4px', fontSize: '13px', background: 'white', color: '#0066cc', cursor: moveGroupId === '' ? 'not-allowed' : 'pointer' }}
+          >
+            {t('applyMove')}
           </button>
           <button
             type="button"
@@ -210,33 +358,25 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
                   <span style={{ fontSize: '14px', fontWeight: 500 }}>{skill.name}</span>
                   <span style={{ fontSize: '12px', color: '#666' }}>{skill.source}</span>
                 </div>
-                <label style={{ position: 'relative', display: 'inline-block', width: '40px', height: '22px' }}>
+                <label className={styles.toggle}>
                   <input
                     type="checkbox"
                     checked={skill.enabled}
                     onChange={(e) => handleToggle(skill.name, e.target.checked)}
-                    style={{ opacity: 0, width: 0, height: 0 }}
                   />
-                  <span style={{
-                    position: 'absolute',
-                    cursor: 'pointer',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: skill.enabled ? '#0066cc' : '#ccc',
-                    transition: '0.3s',
-                    borderRadius: '22px',
-                  }}></span>
+                  <span className={styles.toggleSlider}></span>
                 </label>
               </div>
               {skill.description && (
                 <p style={{ fontSize: '13px', color: '#666', margin: '8px 0 0 0', lineHeight: 1.4 }}>{skill.description}</p>
               )}
-              <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#666', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: '#666', marginTop: '8px', flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 500 }}>{t('invocation')}:</span>
                 <span>{t('modelInvocable')}: {skill.invocation.modelInvocable ? '✓' : '✗'}</span>
                 <span>{t('userInvocable')}: {skill.invocation.userInvocable ? '✓' : '✗'}</span>
+                {skill.group != null && state.groups.some(group => group.id === skill.group) && (
+                  <span style={{ color: '#0066cc' }}>{state.groups.find(group => group.id === skill.group)?.name}</span>
+                )}
               </div>
             </div>
           ))

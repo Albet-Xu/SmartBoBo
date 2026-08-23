@@ -54,6 +54,7 @@
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-goal": "workspace:^",
     "@deepseek-ai/dsh-host-directory-picker": "workspace:^",
+    "@deepseek-ai/dsh-home-paths": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-native-command": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
@@ -72,6 +73,7 @@
     "@deepseek-ai/dsh-workspace": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^",
     "fflate": "^0.8.2",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {

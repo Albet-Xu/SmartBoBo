@@ -74,6 +74,13 @@ export const rpcErrorSchema: z.ZodType<RpcError> = z.discriminatedUnion('code', 
   z.object({ code: z.literal('subagent-not-resumable'), message: z.string(), details: z.object({ childSessionId: z.string() }) }),
   z.object({ code: z.literal('subagent-unauthorized'), message: z.string(), details: z.object({ childSessionId: z.string() }) }),
   z.object({ code: z.literal('subagent-delivery-unavailable'), message: z.string(), details: z.object({ childSessionId: z.string() }) }),
+  z.object({ code: z.literal('settings-unavailable'), message: z.string(), details: z.object({}) }),
+  z.object({ code: z.literal('skill-install-failed'), message: z.string(), details: z.object({ reason: z.string() }) }),
+  z.object({ code: z.literal('skill-not-found'), message: z.string(), details: z.object({ name: z.string() }) }),
+  z.object({ code: z.literal('skill-group-not-found'), message: z.string(), details: z.object({ id: z.string() }) }),
+  z.object({ code: z.literal('mcp-install-failed'), message: z.string(), details: z.object({ reason: z.string() }) }),
+  z.object({ code: z.literal('mcp-config-rejected'), message: z.string(), details: z.object({ reason: z.string() }) }),
+  z.object({ code: z.literal('mcp-tool-not-found'), message: z.string(), details: z.object({ id: z.string() }) }),
   z.object({ code: z.literal('internal'), message: z.string(), details: z.object({}) }),
 ]) as unknown as z.ZodType<RpcError>
 

@@ -9,6 +9,8 @@ import type { HostApi } from './host.ts'
 import type { WorkspaceApi } from './workspace.ts'
 import type { AgentPresetsApi } from './agent-presets.ts'
 import type { SkillsApi } from './skills.ts'
+import type { SkillLibraryApi } from './skill-library.ts'
+import type { McpApi } from './mcp.ts'
 import type { GoalsApi } from './goals.ts'
 import type { SettingsApi } from './settings.ts'
 import type { CredentialsApi } from './credentials.ts'
@@ -51,6 +53,16 @@ export interface RpcMethodMap {
   'workspace.insertSessionBefore': WorkspaceApi['insertSessionBefore']
   'workspace.archiveSession': WorkspaceApi['archiveSession']
   'skill.list': SkillsApi['list']
+  'skillLibrary.installLocal': SkillLibraryApi['installLocal']
+  'skillLibrary.toggle': SkillLibraryApi['toggle']
+  'skillLibrary.uninstall': SkillLibraryApi['uninstall']
+  'skillLibrary.createGroup': SkillLibraryApi['createGroup']
+  'skillLibrary.renameGroup': SkillLibraryApi['renameGroup']
+  'skillLibrary.deleteGroup': SkillLibraryApi['deleteGroup']
+  'skillLibrary.moveToGroup': SkillLibraryApi['moveToGroup']
+  'mcp.install': McpApi['install']
+  'mcp.toggle': McpApi['toggle']
+  'mcp.uninstall': McpApi['uninstall']
   'agentPreset.list': AgentPresetsApi['list']
   'agentPreset.select': AgentPresetsApi['select']
   'agentPreset.read': AgentPresetsApi['read']

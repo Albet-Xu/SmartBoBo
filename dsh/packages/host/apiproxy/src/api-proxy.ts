@@ -4,9 +4,11 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { mkdir, stat } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { appendFile, cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
@@ -21,7 +23,7 @@ import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'
 import { SubagentError } from '@deepseek-ai/dsh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@deepseek-ai/dsh-subagent'
-import { isUserInvocable } from '@deepseek-ai/dsh-skill'
+import { isUserInvocable, isSkillName } from '@deepseek-ai/dsh-skill'
 import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import {
   workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
@@ -39,7 +41,8 @@ import type {
   ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
-  WorkspaceId, WorkspaceView,
+  WorkspaceId, WorkspaceView, SkillLibraryEntry, SkillLibraryGroup, SkillLibrarySettings,
+  McpToolConfigView, McpToolEntryView,
 } from './api/index.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
@@ -111,6 +114,18 @@ import { canOpenNativePath, openNativePath, openNativeTextFile } from './native-
 
 /** Page size when history is called without maxMessages. */
 const DEFAULT_MAX_MESSAGES = 50
+
+/** Settings namespace owning the web skill-library manager's skills/groups lists. */
+const SKILL_LIBRARY_NS = 'skill-library'
+
+/** Settings namespace owning the web MCP tool manager's server list. */
+const MCP_TOOLS_NS = 'mcp-tools'
+
+/** Server-name grammar shared with mcp-client (kept below the public tool-name budget). */
+const MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
+
+/** Plugin package resolved by every mcp-client instance row this domain writes. */
+const MCP_CLIENT_PACKAGE = '@deepseek-ai/dsh-mcp-client'
 
 /** Provider work budget: at most 100 calls and 2,000 inspected hits. */
 const SESSION_SEARCH_PROVIDER_CALL_LIMIT = 100
@@ -1963,6 +1978,153 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     return ok(request, namespaceView(descriptor))
   }
 
+  // ---- skill library / MCP manager helpers (settings + host filesystem) ----
+
+  /** Read one settings namespace's resolved value, else undefined. */
+  const readSection = (ns: string): unknown | undefined => {
+    const settings = ctx.get('settings')
+    return settings?.get(settingsNamespace(ns))
+  }
+
+  /** Resolved skill-library section, defaulting missing lists to empty. */
+  const skillLibrarySection = (): SkillLibrarySettings => {
+    const raw = readSection(SKILL_LIBRARY_NS) as SkillLibrarySettings | undefined
+    return {
+      skills: Array.isArray(raw?.skills) ? raw.skills as SkillLibraryEntry[] : [],
+      groups: Array.isArray(raw?.groups) ? raw.groups as SkillLibraryGroup[] : [],
+    }
+  }
+
+  /** Persist the next skill-library `skills`/`groups` lists through the settings seam. */
+  const writeSkillLibrary = async (next: SkillLibrarySettings): Promise<void> => {
+    const settings = ctx.get('settings')
+    if (settings === undefined) throw new Error('settings service is not mounted')
+    await settings.update(settingsNamespace(SKILL_LIBRARY_NS), next)
+  }
+
+  /** Read the resolved mcp-tools section, defaulting the tools list to empty. */
+  const mcpToolsSection = (): McpToolEntryView[] => {
+    const raw = readSection(MCP_TOOLS_NS) as { tools?: unknown } | undefined
+    return Array.isArray(raw?.tools) ? raw.tools as McpToolEntryView[] : []
+  }
+
+  /** Persist the next mcp-tools `tools` list through the settings seam. */
+  const writeMcpTools = async (tools: McpToolEntryView[]): Promise<void> => {
+    const settings = ctx.get('settings')
+    if (settings === undefined) throw new Error('settings service is not mounted')
+    await settings.update(settingsNamespace(MCP_TOOLS_NS), { tools })
+  }
+
+  /** Append one plugin-instance row to the home cordis overlay, deduped by row id. */
+  const appendHomeCordisRow = async (row: Record<string, unknown>): Promise<void> => {
+    const patchPath = join(resolveDshHome(), 'cordis.patch.yml')
+    await mkdir(dirname(patchPath), { recursive: true })
+    const marker = `- id: ${String(row['id'])}`
+    let existing = ''
+    try {
+      existing = await readFile(patchPath, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    if (existing.includes(marker)) return
+    // stringify one Mapping document → reindent it as a list item so an
+    // existing user patch file stays verbatim (only our row is appended).
+    const item = stringifyYaml(row).trimEnd().split('\n')
+      .map((line, index) => index === 0 ? `- ${line}` : `  ${line}`).join('\n')
+    const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n'
+    await appendFile(patchPath, `${separator}${item}\n`)
+  }
+
+  /** Remove one installed mcp-client row from the home cordis overlay, preserving every other line verbatim. */
+  const removeMcpCordisRow = async (serverName: string): Promise<void> => {
+    const patchPath = join(resolveDshHome(), 'cordis.patch.yml')
+    let existing = ''
+    try {
+      existing = await readFile(patchPath, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    if (existing.length === 0) return
+    const marker = `- id: mcp-${serverName}`
+    const lines = existing.split('\n')
+    const next: string[] = []
+    let skipping = false
+    for (const line of lines) {
+      if (!skipping && (line === marker || line.startsWith(`${marker} `) || line.startsWith(`${marker}\t`))) {
+        skipping = true
+        continue
+      }
+      if (skipping) {
+        // Drop the matched block's indented continuation lines; keep everything else.
+        if (line.length === 0 || /^[ \t]/.test(line)) continue
+        skipping = false
+      }
+      next.push(line)
+    }
+    await writeFile(patchPath, next.join('\n').replace(/\n{3,}/g, '\n\n'))
+  }
+
+  // ---- skill library: read, write, and filesystem helpers shared by skillLibrary.* ----
+
+  /** Extract `name`/`description` scalars from a skill file's YAML frontmatter block. */
+  const readSkillFrontmatter = (raw: string): { name?: string; description?: string } => {
+    const firstLineEnd = raw.indexOf('\n')
+    if (firstLineEnd < 0 || raw.slice(0, firstLineEnd).replace(/\r$/, '') !== '---') return {}
+    let lineStart = firstLineEnd + 1
+    let closing = -1
+    while (lineStart <= raw.length) {
+      const nextNewline = raw.indexOf('\n', lineStart)
+      const lineEnd = nextNewline < 0 ? raw.length : nextNewline
+      if (raw.slice(lineStart, lineEnd).replace(/\r$/, '') === '---') {
+        closing = lineStart
+        break
+      }
+      if (nextNewline < 0) break
+      lineStart = nextNewline + 1
+    }
+    if (closing < 0) return {}
+    let data: unknown
+    try {
+      data = parseYaml(raw.slice(firstLineEnd + 1, closing))
+    } catch {
+      return {}
+    }
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) return {}
+    const record = data as Record<string, unknown>
+    const name = typeof record['name'] === 'string' && record['name'].length > 0 ? record['name'] : undefined
+    const description = typeof record['description'] === 'string' && record['description'].length > 0 ? record['description'] : undefined
+    return {
+      ...name === undefined ? {} : { name },
+      ...description === undefined ? {} : { description },
+    }
+  }
+
+  /** Normalize an arbitrary group label to a stable kebab id, with an empty fallback. */
+  const groupIdFromName = (name: string): string => {
+    const slug = name.toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    if (slug.length > 0) return slug
+    return `group-${Date.now()}`
+  }
+
+  /** Fold a submitted MCP config into the cordis row's config, emitting only provided fields. */
+  const mcpRowConfig = (config: McpToolConfigView): Record<string, unknown> => {
+    const result: Record<string, unknown> = {
+      serverName: config.serverName,
+      transport: config.transport,
+    }
+    if (config.command !== undefined) result['command'] = config.command
+    if (config.args !== undefined) result['args'] = config.args
+    if (config.env !== undefined) result['env'] = config.env
+    if (config.cwd !== undefined) result['cwd'] = config.cwd
+    if (config.url !== undefined) result['url'] = config.url
+    if (config.headers !== undefined) result['headers'] = config.headers
+    if (config.toolCallTimeoutMs !== undefined) result['toolCallTimeoutMs'] = config.toolCallTimeoutMs
+    if (config.failOnStartupError !== undefined) result['failOnStartupError'] = config.failOnStartupError
+    if (config.reconnect !== undefined) result['reconnect'] = config.reconnect
+    return result
+  }
+
   return {
     sessions: {
       // Attached sessions summarize from memory; persisted-but-unattached (cold)
@@ -3194,6 +3356,256 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         } catch (error: unknown) {
           return err(request, { code: 'internal', message: `skill listing failed: ${String(error)}`, details: {} })
         }
+      },
+    },
+
+    skillLibrary: {
+      async installLocal(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const sourcePath = request.payload.path
+        const fail = (reason: string): RpcResponse<{ ok: true }> =>
+          err(request, { code: 'skill-install-failed', message: reason, details: { reason } })
+        let info
+        try {
+          info = await stat(sourcePath)
+        } catch (error) {
+          return fail(`selected skill path is not readable: ${String(error)}`)
+        }
+        if (!info.isDirectory()) return fail('selected skill path is not a directory')
+        let raw: string
+        try {
+          raw = await readFile(join(sourcePath, 'SKILL.md'), 'utf8')
+        } catch (error) {
+          return fail(`no SKILL.md in the selected folder: ${String(error)}`)
+        }
+        const meta = readSkillFrontmatter(raw)
+        const name = meta.name ?? basename(sourcePath)
+        if (!isSkillName(name)) return fail(`skill name "${name}" is not a valid kebab-case name`)
+        const destination = join(resolveDshHome(), 'skills', name)
+        try {
+          await mkdir(dirname(destination), { recursive: true })
+          await cp(sourcePath, destination, { recursive: true, force: true, errorOnExist: false })
+        } catch (error) {
+          return fail(`failed to copy skill to ${destination}: ${String(error)}`)
+        }
+        const library = skillLibrarySection()
+        const prior = library.skills.find(entry => entry.name === name)
+        const entry: SkillLibraryEntry = {
+          name,
+          ...meta.description === undefined ? {} : { description: meta.description },
+          source: 'local',
+          enabled: true,
+          group: prior?.group ?? null,
+          path: join(destination, 'SKILL.md'),
+        }
+        const next = { ...library, skills: [...library.skills.filter(candidate => candidate.name !== name), entry] }
+        try {
+          await writeSkillLibrary(next)
+        } catch (error) {
+          return fail(`failed to record installed skill: ${String(error)}`)
+        }
+        return ok(request, { ok: true })
+      },
+
+      async toggle(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const { name, enabled } = request.payload
+        const library = skillLibrarySection()
+        if (!library.skills.some(entry => entry.name === name)) {
+          return err(request, { code: 'skill-not-found', message: `skill "${name}" is not in the library`, details: { name } })
+        }
+        const next = { ...library, skills: library.skills.map(entry => entry.name === name ? { ...entry, enabled } : entry) }
+        try {
+          await writeSkillLibrary(next)
+        } catch (error) {
+          return err(request, { code: 'settings-rejected', message: String(error), details: { ns: SKILL_LIBRARY_NS } })
+        }
+        return ok(request, { ok: true })
+      },
+
+      async uninstall(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const { name } = request.payload
+        const library = skillLibrarySection()
+        const entry = library.skills.find(candidate => candidate.name === name)
+        if (entry === undefined) {
+          return err(request, { code: 'skill-not-found', message: `skill "${name}" is not in the library`, details: { name } })
+        }
+        const next = { ...library, skills: library.skills.filter(candidate => candidate.name !== name) }
+        // Delete the bundled folder only when it lives under the user skills root:
+        // uninstalling is safe because `installLocal` always copies there.
+        const skillsRoot = resolve(join(resolveDshHome(), 'skills'))
+        const target = entry.path !== undefined ? dirname(entry.path) : join(skillsRoot, name)
+        if (resolve(target).startsWith(resolve(skillsRoot) + sep)) {
+          await rm(target, { recursive: true, force: true }).catch(() => undefined)
+        }
+        try {
+          await writeSkillLibrary(next)
+        } catch (error) {
+          return err(request, { code: 'settings-rejected', message: String(error), details: { ns: SKILL_LIBRARY_NS } })
+        }
+        return ok(request, { ok: true })
+      },
+
+      async createGroup(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const { name } = request.payload
+        const library = skillLibrarySection()
+        const base = groupIdFromName(name)
+        let id = base
+        for (let counter = 2; library.groups.some(group => group.id === id); counter += 1) {
+          id = `${base}-${counter}`
+        }
+        const next = { ...library, groups: [...library.groups, { id, name }] }
+        try {
+          await writeSkillLibrary(next)
+        } catch (error) {
+          return err(request, { code: 'settings-rejected', message: String(error), details: { ns: SKILL_LIBRARY_NS } })
+        }
+        return ok(request, { ok: true })
+      },
+
+      async renameGroup(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const { id, name } = request.payload
+        const library = skillLibrarySection()
+        if (!library.groups.some(group => group.id === id)) {
+          return err(request, { code: 'skill-group-not-found', message: `skill group "${id}" does not exist`, details: { id } })
+        }
+        const next = { ...library, groups: library.groups.map(group => group.id === id ? { id, name } : group) }
+        try {
+          await writeSkillLibrary(next)
+        } catch (error) {
+          return err(request, { code: 'settings-rejected', message: String(error), details: { ns: SKILL_LIBRARY_NS } })
+        }
+        return ok(request, { ok: true })
+      },
+
+      async deleteGroup(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const { id } = request.payload
+        const library = skillLibrarySection()
+        if (!library.groups.some(group => group.id === id)) {
+          return err(request, { code: 'skill-group-not-found', message: `skill group "${id}" does not exist`, details: { id } })
+        }
+        const next = {
+          ...library,
+          groups: library.groups.filter(group => group.id !== id),
+          skills: library.skills.map(entry => entry.group === id ? { ...entry, group: null } : entry),
+        }
+        try {
+          await writeSkillLibrary(next)
+        } catch (error) {
+          return err(request, { code: 'settings-rejected', message: String(error), details: { ns: SKILL_LIBRARY_NS } })
+        }
+        return ok(request, { ok: true })
+      },
+
+      async moveToGroup(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const { names, groupId } = request.payload
+        const library = skillLibrarySection()
+        if (groupId !== null && !library.groups.some(group => group.id === groupId)) {
+          return err(request, { code: 'skill-group-not-found', message: `skill group "${groupId}" does not exist`, details: { id: groupId } })
+        }
+        const missing = names.find(name => !library.skills.some(entry => entry.name === name))
+        if (missing !== undefined) {
+          return err(request, { code: 'skill-not-found', message: `skill "${missing}" is not in the library`, details: { name: missing } })
+        }
+        const next = { ...library, skills: library.skills.map(entry => names.includes(entry.name) ? { ...entry, group: groupId } : entry) }
+        try {
+          await writeSkillLibrary(next)
+        } catch (error) {
+          return err(request, { code: 'settings-rejected', message: String(error), details: { ns: SKILL_LIBRARY_NS } })
+        }
+        return ok(request, { ok: true })
+      },
+    },
+
+    mcp: {
+      async install(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const config = request.payload.config
+        const reject = (reason: string): RpcResponse<{ ok: true }> =>
+          err(request, { code: 'mcp-config-rejected', message: reason, details: { reason } })
+        if (!MCP_SERVER_NAME_PATTERN.test(config.serverName)) {
+          return reject(`serverName "${config.serverName}" must match [A-Za-z0-9_-]{1,32}`)
+        }
+        if (config.transport === 'stdio' && (config.command ?? '') === '') return reject('stdio transport requires a command')
+        if (config.transport === 'streamable-http' && (config.url ?? '') === '') return reject('streamable-http transport requires a url')
+        try {
+          await appendHomeCordisRow({ id: `mcp-${config.serverName}`, name: MCP_CLIENT_PACKAGE, config: mcpRowConfig(config) })
+        } catch (error) {
+          return err(request, { code: 'mcp-install-failed', message: `failed to write mcp-client config: ${String(error)}`, details: { reason: String(error) } })
+        }
+        const tools = mcpToolsSection()
+        const entry: McpToolEntryView = { ...config, id: config.serverName, enabled: true }
+        try {
+          await writeMcpTools([...tools.filter(tool => tool.id !== entry.id), entry])
+        } catch (error) {
+          return err(request, { code: 'mcp-install-failed', message: `failed to record mcp tool: ${String(error)}`, details: { reason: String(error) } })
+        }
+        return ok(request, { ok: true })
+      },
+
+      async toggle(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const { id, enabled } = request.payload
+        const tools = mcpToolsSection()
+        const target = tools.find(tool => tool.id === id)
+        if (target === undefined) {
+          return err(request, { code: 'mcp-tool-not-found', message: `mcp tool "${id}" is not installed`, details: { id } })
+        }
+        try {
+          if (enabled) {
+            // Re-link the saved config so the server mounts again on the next launch.
+            await appendHomeCordisRow({ id: `mcp-${target.serverName}`, name: MCP_CLIENT_PACKAGE, config: mcpRowConfig(target) })
+          } else {
+            // Disabling drops the cordis row so the server stops mounting on the next launch.
+            await removeMcpCordisRow(target.serverName)
+          }
+          await writeMcpTools(tools.map(tool => tool.id === id ? { ...tool, enabled } : tool))
+        } catch (error) {
+          return err(request, { code: 'settings-rejected', message: String(error), details: { ns: MCP_TOOLS_NS } })
+        }
+        return ok(request, { ok: true })
+      },
+
+      async uninstall(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const { id } = request.payload
+        const tools = mcpToolsSection()
+        if (!tools.some(tool => tool.id === id)) {
+          return err(request, { code: 'mcp-tool-not-found', message: `mcp tool "${id}" is not installed`, details: { id } })
+        }
+        try {
+          // Uninstalling also drops the cordis row so the server stops mounting on the next launch.
+          await removeMcpCordisRow(id)
+          await writeMcpTools(tools.filter(tool => tool.id !== id))
+        } catch (error) {
+          return err(request, { code: 'settings-rejected', message: String(error), details: { ns: MCP_TOOLS_NS } })
+        }
+        return ok(request, { ok: true })
       },
     },
 
