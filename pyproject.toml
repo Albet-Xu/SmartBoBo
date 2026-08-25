@@ -20,6 +20,11 @@ dependencies = [
     "camoufox>=0.5.5",
     # HTML 转 Markdown 工具
     "html2text>=2024.2.26",
+    # 工作流模式 —— 提取入库脚本的数据库驱动（db-extraction 技能/dbx_connector 使用）
+    # MySQL / MariaDB
+    "pymysql>=1.1.0",
+    # PostgreSQL
+    "psycopg[binary]>=3.2.0",
 ]
 
 [tool.uv.sources]

@@ -909,3 +909,29 @@ export const IconSkillsLibraryOutline16 = ({ size = 16, className }: IconProps) 
     <line x1="8" y1="9.5" x2="8" y2="13.8" stroke="currentColor" strokeWidth="1" />
   </svg>
 )
+
+/** ic_ds_database_outline_16: classic database cylinder (lid, body, two
+ *  separator rings) — the conventional "database" glyph. */
+export const IconDatabaseOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Lid */}
+    <path
+      d="M2.5 4.5C2.5 3.06719 4.96228 2 8 2C11.0377 2 13.5 3.06719 13.5 4.5C13.5 5.93281 11.0377 7 8 7C4.96228 7 2.5 5.93281 2.5 4.5Z"
+      stroke="currentColor"
+      strokeWidth="1.3"
+    />
+    {/* Body */}
+    <path
+      d="M2.5 4.5V11.5C2.5 12.9328 4.96228 14 8 14C11.0377 14 13.5 12.9328 13.5 11.5V4.5"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinejoin="round"
+    />
+    {/* Middle separator ring */}
+    <path
+      d="M2.5 8C2.5 9.43281 4.96228 10.5 8 10.5C11.0377 10.5 13.5 9.43281 13.5 8"
+      stroke="currentColor"
+      strokeWidth="1.3"
+    />
+  </svg>
+)

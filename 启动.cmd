@@ -26,6 +26,23 @@ if errorlevel 1 (
   exit /b 1
 )
 
+rem --- Start the DBX database web service in its own window (best-effort).
+rem     If the runtime is missing, BoBo still starts; only the in-app
+rem     "数据库" panel is unavailable. Env is inherited by the new window. ---
+set "DBX_BIN=%BOBO_ROOT%\dbx-runtime\dbx-web.exe"
+if exist "%DBX_BIN%" (
+  set "DBX_STATIC_DIR=%BOBO_ROOT%\dbx-runtime\dist"
+  set "DBX_DATA_DIR=%BOBO_ROOT%\dbx-runtime\data"
+  set "DBX_PORT=4224"
+  set "DBX_DISABLE_PASSWORD=1"
+  start "BoBo DBX (http://localhost:4224)" "%DBX_BIN%"
+) else (
+  echo [WARN] DBX runtime not found at "%DBX_BIN%".
+  echo        Database panel unavailable. Rebuild it first:
+  echo        E.g. run the cargo build + frontend build and copy into dbx-runtime
+  echo        (see docs\说明文档\20-DBX数据库集成操作指南.md).
+)
+
 rem --- Start the web server (long-running). Keep window on error ---
 call pnpm bobo
 set "rc=%errorlevel%"

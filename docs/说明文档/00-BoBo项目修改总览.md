@@ -94,6 +94,24 @@ BoBo 是一个智能采集平台，基于 DeepSeek Harness 构建，集成了多
 - `BoBo/scripts/run_crawl4ai.py` - 添加 HTML 转 Markdown 功能
 - `BoBo/dsh/packages/acquisition/tool-acquisition/src/index.ts` - 支持动态工作区路径
 
+### 2.6 工作流模式 Agent 预设
+
+**文档位置**: `功能实现/21-工作流模式实现与操作指南.md`
+
+**修改内容**:
+- 创建工作流模式预设配置
+- 采集/爬取关键词 + 网址自动采集，数据落当前工作区 data 文件夹
+- 复用内置 DBX 已存连接连库，逐字段向用户确认含义后写入
+- 用模板技能 db-extraction 生成提取入库脚本（UPSERT 去重/更新），保存到工作区 extraction_scripts
+- 新增数据库驱动依赖 pymysql / psycopg
+
+**关键文件**:
+- `BoBo/dsh/apps/cli/config/agent-presets/workflow/preset.yml` - 预设元数据
+- `BoBo/dsh/apps/cli/config/agent-presets/workflow/agent.cordis.yml` - Agent 配置（工作流 persona + 采集工具）
+- `~/.dsh/skills/db-extraction/{SKILL.md, dbx_connector.py, extraction_template.py}` - 提取入库技能与模板
+- `~/.dsh/settings.yaml` - skill-library 登记 db-extraction
+- `BoBo/pyproject.toml` - 添加 pymysql / psycopg 数据库驱动
+
 ## 3. 文档结构
 
 ```
@@ -221,6 +239,12 @@ pnpm bobo
 3. **检查配置**: 验证配置文件路径和参数
 
 ## 9. 版本记录
+
+### v1.2.0 (2024-08-25)
+- 工作流模式 Agent 预设实现
+- 采集 + 复用内置 DBX 连库 + 逐字段确认写入的采集入库工作流
+- 新增模板技能 db-extraction（提取入库脚本 UPSERT 去重/更新）
+- 新增数据库驱动 pymysql / psycopg
 
 ### v1.1.0 (2024-08-20)
 - 采集逻辑优化完成

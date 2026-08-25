@@ -110,7 +110,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  max-width: 60px;
+  max-width: 92px;
   opacity: 1;
   overflow: hidden;
   visibility: visible;
@@ -276,6 +276,33 @@
 }
 
 .rail .searchButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Rail database control: its own 36px seat below the search control,
+   matching the rail's shared 12px stack rhythm. */
+.rail .database {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.rail .databaseButton {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-primary);
+}
+
+.rail .databaseButton:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
@@ -503,4 +530,101 @@
   .headerActions {
     transition: none;
   }
+}
+
+/* Embedded DBX Web panel (full-viewport overlay mirroring Modal's mask +
+   surface elevations): mask, then a large near-fullscreen card hosting the
+   DBX UI in an iframe, with a bar for the title / open-in-tab / close. */
+.dbxBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+}
+
+.dbxPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1280px, 100%);
+  height: min(820px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-inverted);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-shadow-lv3);
+}
+
+.dbxBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 12px 20px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.dbxTitle {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dbxBarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dbxOpenTab {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: none;
+}
+
+.dbxOpenTab:hover {
+  color: var(--dsw-alias-label-primary);
+  text-decoration: underline;
+}
+
+.dbxClose {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dbxClose:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dbxFrame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  background: transparent;
+}
+
+.dbxHint {
+  flex: none;
+  padding: 8px 20px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
 }

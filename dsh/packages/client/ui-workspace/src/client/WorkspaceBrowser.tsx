@@ -14,6 +14,7 @@ import clsx from 'clsx'
 import {
   Button, IconCloseFill14, IconPersonalizationOutline16,
   IconProjectAddOutline16, IconSearchOutline16, Menu, Modal, Tooltip,
+  IconDatabaseOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   SessionId, SessionListState, SessionSearchResultItem, WorkspaceId, WorkspaceView,
@@ -37,6 +38,10 @@ const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_QUERY_MAX_CODE_UNITS = 500
 /** Session rows visible per Workspace before the local overflow control. */
 const COLLAPSED_SESSION_LIMIT = 5
+
+/** Local DBX Web service origin (backend + bundled static frontend), launch
+    scripts drive the exact port (default 4224). */
+const DBX_WEB_URL = 'http://localhost:4224'
 
 /** Keep controlled input and RPC payload inside the session.search wire contract. */
 function sanitizeSearchQuery(value: string): string {
@@ -802,6 +807,9 @@ export function WorkspaceBrowser({
   // Rail search = expand + land in the search box: the flag arms before the
   // expand request; once the shell flips wide the input mounts and takes focus.
   const [searchOnExpand, setSearchOnExpand] = useState(false)
+
+  // DBX database panel: opened from the database control in both states.
+  const [dbxOpen, setDbxOpen] = useState(false)
   useEffect(() => {
     if (wide && searchOnExpand) {
       const timer = window.setTimeout(() => {
@@ -1038,6 +1046,20 @@ export function WorkspaceBrowser({
           </div>
         )}
         <div className={clsx(css.headerActions, wide && searchExpanded && css.headerActionsHidden)}>
+          {/* Wide: the database control rides the header row to the right of the
+              search box, sharing the same 4px icon gap. */}
+          {wide && (
+            <Tooltip label={t('database.label')} side="bottom" delayMs={500}>
+              <button
+                type="button"
+                className={css.iconButton}
+                aria-label={t('database.label')}
+                onClick={() => { setWsPickerOpen(false); setDbxOpen(true) }}
+              >
+                <IconDatabaseOutline16 size={16} />
+              </button>
+            </Tooltip>
+          )}
           {wide && (
             <ViewOptionsMenu
               groupBy={groupBy}
@@ -1099,6 +1121,21 @@ export function WorkspaceBrowser({
             }}
           >
             <IconSearchOutline16 size={18} />
+          </button>
+        </Tooltip>
+      </div>}
+
+      {/* The collapsed rail keeps the database control as its own 36px seat,
+          stacking below the search control. */}
+      {!wide && <div className={css.database}>
+        <Tooltip label={t('database.label')}>
+          <button
+            type="button"
+            className={css.databaseButton}
+            aria-label={t('database.label')}
+            onClick={() => { setDbxOpen(true) }}
+          >
+            <IconDatabaseOutline16 size={18} />
           </button>
         </Tooltip>
       </div>}
@@ -1257,6 +1294,32 @@ export function WorkspaceBrowser({
         {deleting && <div className={css.deleteStatus} role="status">{t('delete.pending')}</div>}
         {deleteError !== null && <div className={css.renameError} role="alert">{deleteError}</div>}
       </Modal>
+
+      {/* Embedded DBX Web panel: full-viewport overlay loading the local DBX
+          service. A fallback "open in new tab" link covers rendering contexts
+          where the service refuses to be framed. */}
+      {dbxOpen && (
+        <div className={css.dbxBackdrop} role="dialog" aria-modal="true" aria-label={t('dbx.panel.title')}>
+          <div className={css.dbxPanel}>
+            <div className={css.dbxBar}>
+              <span className={css.dbxTitle}>{t('dbx.panel.title')}</span>
+              <span className={css.dbxBarActions}>
+                <a className={css.dbxOpenTab} href={DBX_WEB_URL} target="_blank" rel="noreferrer">{t('dbx.openTab')}</a>
+                <button
+                  type="button"
+                  className={css.dbxClose}
+                  aria-label={t('close')}
+                  onClick={() => { setDbxOpen(false) }}
+                >
+                  <IconCloseFill14 />
+                </button>
+              </span>
+            </div>
+            <iframe className={css.dbxFrame} title={t('dbx.panel.title')} src={DBX_WEB_URL} />
+            <div className={css.dbxHint}>{t('dbx.hint')}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
