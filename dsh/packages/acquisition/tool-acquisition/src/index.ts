@@ -4,9 +4,11 @@
  * 实现方式（本阶段：Node 编排 + Python 采集双栈）：
  * - 通过 `child_process` 调用本地 Python 脚本（`BoBo/scripts/run_camoufox.py`
  *   （默认）/run_scrapling.py/run_crawl4ai.py），脚本真正抓取网页。
- * - 脚本把**渲染后的内容转换为 Markdown** 落盘到本地（默认以 站点_标题_时间戳.md
+ * - 脚本按 `outputFormat`（支持逗号分隔多格式）把渲染后的内容转换为一个或多个
+ *   目标格式（html / md / skeleton）落盘到本地（默认以 站点_标题_时间戳.<格式扩展名>
  *   命名，不生成 .json）；同时把一行单行 JSON 打到 stdout，这里解析后返回给智能体
- *   （`savedTo`/`status`/`preview`，仅作告知，AI 不读 Markdown 内容）。
+ *   （`savedTo`/`status`/`preview`/`format`/`outputs`，仅作告知，AI 不读内容本身）。
+ * - 一次抓取可产出多个格式：以同一份渲染 HTML 为素材，分别派生 html / md / skeleton。
  * - 默认保存位置为当前工作区的 data 文件夹，除非用户明确指定其他位置。
  *
  * 装配方式见 `BoBo/patch/`（`- insert:` 注入 + `- id: webserver` 固定 7070 端口）。
@@ -47,6 +49,9 @@ const BOBO_ROOT = findProjectRoot(dirname(fileURLToPath(import.meta.url)))
 
 /** Windows 用 .venv/Scripts/python.exe，Linux/macOS 用 .venv/bin/python。 */
 const PYTHON_SUBPATH = process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python'
+
+/** 支持的输出格式集合，用于把用户选择的 outputFormat 校验后透传给 Python 脚本。 */
+const OUTPUT_FORMATS = ['html', 'md', 'skeleton'] as const
 
 export const name = 'tool-acquisition'
 export const inject = ['tools']
@@ -108,9 +113,10 @@ export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(defineTool({
     name: 'crawl_fetch',
     description:
-      'Fetch a webpage with the local Python engine, convert the rendered content to Markdown, ' +
-      'and save it to the local data directory. By default, saves to the current workspace\'s ' +
-      'data folder. Returns the saved path, HTTP status and a short text preview.',
+      'Fetch a webpage with the local Python engine, convert the rendered content to one or more ' +
+      'chosen output formats, and save them to the local data directory. A single crawl can produce ' +
+      'multiple formats (each derived from the same rendered HTML). By default, saves to the current ' +
+      'workspace\'s data folder. Returns the saved path(s), HTTP status, chosen format(s) and a short text preview.',
     parameters: {
       url: {
         type: 'string',
@@ -126,9 +132,13 @@ export function apply(ctx: Context, config: Config): void {
         type: 'string',
         description: 'Optional CSS selector to narrow extraction (Scrapling). When present, only the first match is returned.',
       },
+      outputFormat: {
+        type: 'string',
+        description: 'One or more output formats, comma-separated: "html" (raw rendered HTML), "md" (Markdown, default), "skeleton" (block-level webpage skeleton). E.g. "html,md,skeleton" returns all three from a single crawl. Extensions: html -> .html, md -> .md, skeleton -> .skeleton.txt.',
+      },
       outFile: {
         type: 'string',
-        description: 'Optional target .md filename; default is auto-generated as 站点_标题_时间戳.md.',
+        description: 'Optional target filename; default is auto-generated as 站点_标题_时间戳.<ext>. Extension is appended per outputFormat when missing.',
       },
       saveDir: {
         type: 'string',
@@ -143,15 +153,40 @@ export function apply(ctx: Context, config: Config): void {
           savedTo: { type: 'string', required: true },
           status: { type: 'number', required: true },
           contentPreview: { type: 'string', required: true },
+          format: { type: 'string', required: true },
+          outputs: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                format: { type: 'string', required: true },
+                path: { type: 'string', required: true },
+              },
+            },
+          },
         },
       },
-      render: (_args, value) => [{
-        type: 'text',
-        text: `采集完成:\n- 已保存: ${value.savedTo}\n- HTTP状态: ${value.status}\n- 预览: ${value.contentPreview}`,
-      }],
+      render: (_args, value) => {
+        const files = Array.isArray(value.outputs) && value.outputs.length > 0
+          ? value.outputs.map((o) => `- ${o.format}: ${o.path}`).join('\n')
+          : `- 已保存: ${value.savedTo}`
+        return [{
+          type: 'text',
+          text: `采集完成:\n${files}\n- HTTP状态: ${value.status}\n- 格式: ${value.format}\n- 预览: ${value.contentPreview}`,
+        }]
+      },
     },
     async execute(args, exec) {
       const engine = args.engine ?? 'camoufox'
+      // 先校验再使用：outputFormat 支持逗号分隔多格式；剔除非预期值与重复项，空则回退 md
+      const requested = args.outputFormat ?? 'md'
+      const formats = requested.split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter((f) => (OUTPUT_FORMATS as readonly string[]).includes(f))
+      const safeFormats = Array.from(new Set(formats))
+      const format = safeFormats.length > 0 ? safeFormats.join(',') : 'md'
       // 优先用配置显式值；否则自动定位到 BoBo 根对应的 .venv / scripts（跨机器可移植）
       const pythonBin = config.pythonBin
         ?? (BOBO_ROOT ? join(BOBO_ROOT, PYTHON_SUBPATH) : 'python')
@@ -173,14 +208,15 @@ export function apply(ctx: Context, config: Config): void {
         }
       }
 
-      // 由脚本决定落盘文件名：默认 --auto-name（站点_标题_时间戳.md）；
-      // 若调用方指定了 outFile，则作为目标 .md 文件名（其下 .md 扩展名由脚本补全）。
+      // 由脚本决定落盘文件名：默认 --auto-name（站点_标题_时间戳.<各格式扩展名>）；
+      // 若调用方指定了 outFile，则作为目标文件名基座（缺失的格式扩展名由脚本补全）。
       const outBase = args.outFile ?? 'crawl_auto'
 
       const scriptArgs = [
         join(scriptsDir, `run_${engine}.py`),
         '--url', args.url,
         '--out', join(dataDir, outBase),
+        '--format', format,
       ]
       if (!args.outFile) scriptArgs.push('--auto-name')
       if (args.selector) scriptArgs.push('--selector', args.selector)
@@ -199,10 +235,16 @@ export function apply(ctx: Context, config: Config): void {
       let result: any = {}
       try { result = JSON.parse(stdout) } catch { /* stdout 非 JSON 时忽略 */ }
 
+      const outputs = Array.isArray(result.outputs)
+        ? result.outputs.map((o: any) => ({ format: String(o?.format ?? ''), path: String(o?.path ?? '') }))
+        : []
+
       return {
         savedTo: String(result.savedTo ?? ''),
         status: result.status ?? 0,
         contentPreview: String(result.preview ?? '').slice(0, 2000),
+        format: String(result.format ?? format),
+        outputs,
       }
     },
     presentCall: (args) => ({

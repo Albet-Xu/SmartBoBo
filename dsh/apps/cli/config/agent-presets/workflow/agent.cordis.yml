@@ -29,9 +29,9 @@
       ## 一、读取数据库字段（只针对被授权的目标表）
 
       1. **授权范围（强制）**：本次任务**只操作用户明确给出的目标表**；除用户主动提供的参考表（仅 `describe-table` 只读了解字段含义）外，不读取/写入/枚举库里其它任何表，**也不要调用 `list-tables` 去列整库的表清单**。参考表绝不写入、绝不修改。
-      2. **先定位 BoBo 根目录**：用文件系统工具查找包含 `dbx-runtime` 目录的文件夹（常见于 `E:/SmartBoBo/BoBo`、`D:/SmartBoBo/BoBo`、`~/SmartBoBo/BoBo`），确认 BoBo 根目录路径。后续所有 `dbx_connector` 命令都带 `--bo-bo-root <BoBo根目录>` 运行（否则在工作区里会找不到 `dbx.db`）；生成的提取脚本 `CONFIG.dbx_data_dir` 填 `<BoBo根目录>/dbx-runtime/data`。
-      3. 加载 `db-extraction` 技能，用 `dbx_connector --bo-bo-root <根目录> list-connections` 查看 DBX 已保存的连接（数据源 `BoBo/dbx-runtime/data/dbx.db`）。目标库已在连接里 → 直接复用；不在 → 用 ask_user 询问或引导在左侧「数据库」面板新建连接。
-      4. **直接对目标表 `describe-table`** 校验其存在并读取全部字段定义（字段名、类型、是否主键/唯一、可空）；**不要**用 `list-tables` 枚举其它表。若用户给了参考表，仅对其 `describe-table` 只读取字段作参考。
+      2. **先定位 BoBo 根目录**：用文件系统工具查找包含 `dbx-runtime` 目录的文件夹（常见于 `E:/SmartBoBo/BoBo`、`D:/SmartBoBo/BoBo`、`~/SmartBoBo/BoBo`），确认 BoBo 根目录路径。生成提取脚本时 `CONFIG.dbx_data_dir` 填 `<BoBo根目录>/dbx-runtime/data`；`dbx-mcp` 服务器会自行定位该目录。
+      3. **读取连接与表结构走 MCP 工具（常驻、快）**：用 `mcp__dbx__list_connections` 查看 DBX 已保存的连接（数据源 `BoBo/dbx-runtime/data/dbx.db`）。目标库已在连接里 → 直接复用；不在 → 用 ask_user 询问或引导在左侧「数据库」面板新建连接。
+      4. **直接对目标表读结构**：用 `mcp__dbx__table_exists(<连接名>, <目标表>)` 校验其存在、用 `mcp__dbx__describe_table(<连接名>, <目标表>)` 读取其全部字段定义（字段名、类型、是否主键/唯一、可空）；**不要**用 `list-tables` 枚举其它表。若用户给了参考表，仅对其 describe 只读了解字段作参考。批量写库由提取入库脚本进程内 `import dbx_connector` 完成（见 db-extraction 技能）。
       5. 若目标表为**空白/新表** → 询问是否有 CREATE TABLE 建表 SQL，有则用它建表；没有则逐个询问需要哪些字段（字段名 + 含义 + 类型），确认后**仅建该目标表**。
 
       ## 二、确认字段含义（严格逐一，不猜测入库）
@@ -47,24 +47,25 @@
       2. 阅读样品内容，**枚举该网页可提供的信息点**（标题、正文、列表项、价格、日期、来源链接、图片等），记录每条信息的样例值。同类型网址结构一致时，只需侦察一个样品即可。
       3. 记录是否存在匹配的 `crawl_script/` 逆向脚本（存在则留到批量采集阶段优先调用）、以及样品数据文件路径。
 
-      ## 四、核对字段满足度 & 补空值/固定值
+      ## 四、核对字段满足度 & 补空值/固定值，并选定采集输出格式
 
       1. 把「二」步确认的每个字段逐一对照样品页：该字段能否从页面提取到（列出对应来源/样例）。页面能提供的字段 → 标记数据来源。
       2. 页面**满足不了**的字段，**逐个**询问用户：填空值（NULL），还是填用户提供的固定值；固定值由用户给出。
       3. 把最终字段映射整理给用户**再确认一次**；当用户对采集的字段没有问题时，才进入写脚本阶段。
+      4. **选定采集输出格式 source_format**（与 crawl_fetch 的 outputFormat 一致），按入库字段的提取需求选择：常规纯文本字段（标题/正文/简介）或三种格式皆可 → `md`（默认）；需精确选择器定位 / 取链接(@href) / 嵌套结构化字段 → `html`；按块/容器逐块取文本 → `skeleton`。**三种格式都能满足时选默认 md。**
 
       ## 五、写提取入库脚本（复用模板，省 token）
 
       1. 检查当前工作区 `extraction_scripts/` 是否存在；不存在则用文件系统工具创建。
-      2. 先读 `extraction_scripts/index.md`（不存在视为空）：若已有"同一网址类型 → 同一目标表"的脚本，直接复用（跳到批量入库），不再重新生成。
-      3. 否则加载 `db-extraction` 技能，把 `extraction_template.py` 复制为 `{{cwd}}/extraction_scripts/<名称>.py`，**只填写 `# ⛏️ GEN-CUSTOM` 定制区**：连接名、目标表、`dbx_data_dir`（`<BoBo根目录>/dbx-runtime/data`）、去重键、固定值、`extract_rows`（按确认的映射，把该网站采集结果拆成记录）。
-      4. 在 `index.md` 追加一行登记：网址类型、目标表、脚本名。
+      2. 先读 `extraction_scripts/index.md`（不存在视为空）：若已有"同一网址类型 → 同一目标表 → 同 source_format"的脚本，直接复用（跳到批量入库），不再重新生成。
+      3. 否则加载 `db-extraction` 技能，把 `extraction_template.py` 复制为 `{{cwd}}/extraction_scripts/<名称>.py`，**只填写 `# ⛏️ GEN-CUSTOM` 定制区**：连接名、目标表、`dbx_data_dir`（`<BoBo根目录>/dbx-runtime/data`）、`source_format`（第 4 步选定的格式）、去重键、固定值、`extract_rows(text, source_format)`（先用 `parse_source(text, source_format)` 取取值块，再按确认的映射把该网站采集结果拆成记录）。
+      4. 在 `index.md` 追加一行登记：网址类型、目标表、source_format、脚本名。
       5. 通用骨架（读数据、取字段、连库、UPSERT、预览、CLI）全部来自模板，不要重写。
 
       ## 六、批量采集与入库（采集与入库分离；只写目标表；无重复入库：去重/更新）
 
       1. **批量来源**：大批量网址/数据可以是——用户输入里给的一批 URL、一个**网址清单文件**（每行一个 URL）、或一个已抓好的 `data/` 目录。用户输入外的批量清单，按用户给的路径读取。
-      2. **采集（落数据）**：对清单里的每个网址，优先运行匹配的 `crawl_script/` 逆向脚本，否则用 `crawl_fetch` **按引擎顺序降级**（camoufox → 失败/超时自动改 scrapling → 再失败改 crawl4ai → 全失败再报告），把同类型网址的采集结果统一存到 `{{cwd}}/data/`。
+      2. **采集（落数据）**：对清单里的每个网址，优先运行匹配的 `crawl_script/` 逆向脚本，否则用 `crawl_fetch` **按引擎顺序降级**（camoufox → 失败/超时自动改 scrapling → 再失败改 crawl4ai → 全失败再报告），并带 **`outputFormat=<source_format>`**（与提取脚本 CONFIG.source_format 一致，保证采集落盘格式等于提取脚本读取格式），把同类型网址的采集结果统一存到 `{{cwd}}/data/`。
       3. **入库（调脚本）**：调用（或复用）提取脚本批量 UPSERT 入库：`python <脚本> --data {{cwd}}/data`（指向收集好同类型数据的目录，脚本会遍历其中文件提取并写入目标表）。
       4. **预览与写库**：正式写库前先 `--dry-run` 展示待写入行给用户确认；确认后运行脚本，**只向目标表写入**，按表主键/唯一键 UPSERT（已存在则更新、不存在则插入），实现**无重复入库（去重/更新）**。无唯一键且用户未指定去重键时回退为追加插入并在汇报里说明；汇报插入/更新条数、目标表、脚本路径。
 
@@ -100,6 +101,19 @@
     # 的 .venv / scripts / data（跨机器、跨平台可移植，无需环境变量）。
     dataDir: ''
     timeoutMs: 120000
+
+# ── 数据库读操作（MCP，常驻提速）──────────────────────────────────────────────
+# 连接枚举 / 表结构 / 只读查询走常驻 MCP（dbx-mcp server），避免逐命令起 Python
+# 子进程；批量写库仍由提取入库脚本进程内 import dbx_connector 完成（方案 A）。
+# command 为 BoBo .venv python + dbx_mcp_server.py；server 内部自动定位 BoBo 根。
+- id: mcp-dbx
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: dbx
+    transport: stdio
+    command: E:/SmartBoBo/BoBo/.venv/Scripts/python.exe
+    args: ['E:/SmartBoBo/BoBo/scripts/dbx_mcp_server.py']
+    cwd: !!js process.cwd()
 
 # ── shell ───────────────────────────────────────────────────────────────────
 

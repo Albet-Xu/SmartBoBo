@@ -1,40 +1,35 @@
-"""用 Scrapling 抓取单页，把渲染后的内容转为 Markdown 存到本地（dsh 的 crawl_fetch 工具经子进程调用）。
+"""用 Scrapling 抓取单页，按 --format 转目标格式存到本地（dsh 的 crawl_fetch 工具经子进程调用）。
 
 真实 API 核对（Scrapling v0.4.x）：
 - StealthyFetcher.fetch 是 classmethod，支持 headless / network_idle。
 - 返回的 Response 继承 Selector，没有 ``css_first`` —— 取首个匹配用 ``page.css(sel).first``。
 - 没有 ``save_html`` —— 保存 HTML 需自己写文件：``page.html_content``（inner HTML）。
 
-行为：使用 html2text 将 HTML 转换为 Markdown 格式，写到本地（--out 或 auto-name 的 站点_标题_时间戳.md），**不生成 .json**；
-仅通过 stdout 打一行单行 JSON 供插件解析。
+行为：按 `--format` 逗号分隔的多格式派生并落盘（同一份渲染 HTML 分别转换）：
+html / md（默认）/ skeleton，一次抓取可产出多个文件，**不生成 .json**；
+仅通过 stdout 打一行单行 JSON `{"savedTo","status","preview","title","format","outputs"}` 供插件解析。
 """
 import argparse
 import json
-import re
-import time
+import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+
 from scrapling.fetchers import StealthyFetcher
-import html2text
 
-
-def safe_name(s: str, maxlen: int = 60) -> str:
-    s = re.sub(r'[^\w\u4e00-\u9fff-]+', '_', str(s), flags=re.UNICODE)
-    return s.strip('_')[:maxlen] or 'page'
-
-
-def build_filename(url: str, title: str) -> str:
-    host = urlsplit(url).netloc.replace('www.', '')
-    host_s = safe_name(host, 40)
-    title_s = safe_name(title, 60)
-    ts = time.strftime('%Y%m%d-%H%M%S')
-    return f"{host_s}_{title_s}_{ts}.md"
+# 确保可 import 同目录共享模块（脚本可能被任意 cwd 调用）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from crawl_common import (
+    DEFAULT_FORMAT,
+    html_to_format,
+    parse_formats,
+    resolve_outputs,
+    write_output,
+)
 
 
 def main():
     # Windows 下子进程 stdout 默认 GBK，遇非 GBK 字符（如零宽空格 \u200b）会抛
     # UnicodeEncodeError；强制 UTF-8，与 dsh 侧 encoding='utf-8' 读取一致。
-    import sys
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
@@ -43,6 +38,8 @@ def main():
     ap.add_argument('--url', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--selector', default=None)
+    ap.add_argument('--format', default=DEFAULT_FORMAT,
+                    help='输出格式，逗号分隔可多选，如 html,md,skeleton（默认 md）')
     ap.add_argument('--auto-name', action='store_true')
     a = ap.parse_args()
     try:
@@ -56,48 +53,33 @@ def main():
 
         title = page.css('title').first.text if page.css('title').first is not None else 'untitled'
 
-        # 将 HTML 转换为 Markdown
-        h = html2text.HTML2Text()
-        h.ignore_links = False
-        h.ignore_images = False
-        h.ignore_emphasis = False
-        h.body_width = 0  # 不自动换行
-        h.unicode_snob = True  # 使用 Unicode 字符
-        h.skip_internal_links = False
-        h.inline_links = True
-        h.ignore_images = False
-        h.images_to_alt = False
-        h.single_line_break = False
-
-        # 如果指定了选择器，只转换选择器匹配的内容
+        # 指定了 selector 时，只转换命中部分（否则转换整页渲染 HTML）
+        html_chunk = page.html_content
         if a.selector:
-            try:
-                node = page.css(a.selector).first
-                if node is not None:
-                    selected_html = node.html
-                    markdown = h.handle(selected_html)
-                else:
-                    markdown = h.handle(page.html_content)
-            except Exception:
-                markdown = h.handle(page.html_content)
-        else:
-            markdown = h.handle(page.html_content)
+            node = page.css(a.selector).first
+            if node is not None:
+                html_chunk = node.html
 
-        if a.auto_name:
-            out = str(Path(a.out).parent / build_filename(a.url, title))
-        else:
-            out = a.out
-            if not out.lower().endswith('.md'):
-                out = out + '.md'
+        # 一次抓取，按请求的多格式分别派生落盘
+        formats = parse_formats(a.format)
+        out_map = resolve_outputs(a.out, a.url, title, formats, a.auto_name)
+        outputs = []
+        for fmt in formats:
+            content = html_to_format(html_chunk, fmt)
+            write_output(out_map[fmt], content)
+            outputs.append({'format': fmt, 'path': out_map[fmt]})
 
-        # 保存 Markdown 文件
-        Path(out).parent.mkdir(parents=True, exist_ok=True)
-        with open(out, 'w', encoding='utf-8') as f:
-            f.write(markdown)
-
-        result = {'savedTo': out, 'status': page.status, 'preview': (text or '')[:2000], 'title': title}
+        result = {
+            'savedTo': outputs[0]['path'],
+            'status': page.status,
+            'preview': (text or '')[:2000],
+            'title': title,
+            'format': a.format,
+            'outputs': outputs,
+        }
     except Exception as e:
-        result = {'status': 0, 'savedTo': '', 'preview': f'ERROR: {e}', 'title': ''}
+        result = {'status': 0, 'savedTo': '', 'preview': f'ERROR: {e}',
+                  'title': '', 'format': a.format, 'outputs': []}
     print(json.dumps(result, ensure_ascii=False))  # 仅 stdout，不落盘 JSON
 
 

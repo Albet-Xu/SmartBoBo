@@ -1,14 +1,16 @@
-"""用 Camoufox（抗检测浏览器，默认采集通道）抓取单页，把渲染后的内容转为 Markdown 存到本地。
+"""用 Camoufox（抗检测浏览器，默认采集通道）抓取单页，按 --format 转目标格式存到本地。
 
 dsh 的 crawl_fetch 工具经子进程调用本脚本。这是本平台默认的采集通道。
 
 行为：
 - 用真实浏览器渲染页面（执行 JS），取**渲染后的完整 HTML**（`page.content()`）。
-- 使用 html2text 将 HTML 转换为 Markdown 格式。
-- 把 Markdown 写入本地文件：文件名优先用 `站点_标题_时间戳.md`（--auto-name 时），
-  否则用 --out 指定的路径。**不生成 .json 文件**。
-- 仅通过 stdout 打一行单行 JSON `{"savedTo","status","preview"}` 供 dsh 插件解析，
-  不落盘 JSON。
+- 按 `--format` 逗号分隔的多格式派生并落盘（同一份渲染 HTML 分别转换）：
+  html（原样）/ md（html2text 转 Markdown，默认）/ skeleton（lxml 块级骨架），
+  扩展名分别 .html / .md / .skeleton.txt。一次抓取可产出多个文件。
+- 文件名：auto-name 时用共享模块拼 `站点_标题_时间戳<各格式扩展名>`，否则用 --out。
+  **不生成 .json 文件**。
+- 仅通过 stdout 打一行单行 JSON `{"savedTo","status","preview","title","format","outputs"}`
+  供 dsh 插件解析，不落盘 JSON（outputs 为 [{format,path}, ...]）。
 
 注意：
 - headless=True 无头运行；排除默认 UBO 扩展（其下载依赖 addons.mozilla.org，
@@ -19,13 +21,21 @@ dsh 的 crawl_fetch 工具经子进程调用本脚本。这是本平台默认的
 import argparse
 import asyncio
 import json
-import re
-import time
+import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+
 from camoufox.async_api import AsyncCamoufox
 from camoufox import DefaultAddons
-import html2text
+
+# 确保可 import 同目录共享模块（脚本可能被任意 cwd 调用）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from crawl_common import (
+    DEFAULT_FORMAT,
+    html_to_format,
+    parse_formats,
+    resolve_outputs,
+    write_output,
+)
 
 COOKIE_ACCEPT_SELECTORS = [
     "button:has-text('我接受')",
@@ -35,20 +45,6 @@ COOKIE_ACCEPT_SELECTORS = [
     "#consent-accept-button",
     "button:has-text('Agree')",
 ]
-
-
-def safe_name(s: str, maxlen: int = 60) -> str:
-    """把字符串安全化成可用于文件名的片段（保留中文/字母数字/横线/下划线）。"""
-    s = re.sub(r'[^\w\u4e00-\u9fff-]+', '_', str(s), flags=re.UNICODE)
-    return s.strip('_')[:maxlen] or 'page'
-
-
-def build_filename(url: str, title: str) -> str:
-    host = urlsplit(url).netloc.replace('www.', '')
-    host_s = safe_name(host, 40)
-    title_s = safe_name(title, 60)
-    ts = time.strftime('%Y%m%d-%H%M%S')
-    return f"{host_s}_{title_s}_{ts}.md"
 
 
 async def dismiss_cookie_overlays(page) -> None:
@@ -63,7 +59,7 @@ async def dismiss_cookie_overlays(page) -> None:
             continue
 
 
-async def run(url: str, out: str, selector: str | None, auto_name: bool) -> dict:
+async def run(url: str, out: str, selector: str | None, auto_name: bool, fmt_arg: str) -> dict:
     async with AsyncCamoufox(
         headless=True,
         exclude_addons=[DefaultAddons.UBO],
@@ -82,48 +78,27 @@ async def run(url: str, out: str, selector: str | None, auto_name: bool) -> dict
             await page.mouse.wheel(0, 1800)
             await page.wait_for_timeout(1200)
 
-        html = await page.content()
+        full_html = await page.content()
         title = await page.title() or 'untitled'
 
-        # 将 HTML 转换为 Markdown
-        h = html2text.HTML2Text()
-        h.ignore_links = False
-        h.ignore_images = False
-        h.ignore_emphasis = False
-        h.body_width = 0  # 不自动换行
-        h.unicode_snob = True  # 使用 Unicode 字符
-        h.skip_internal_links = False
-        h.inline_links = True
-        h.ignore_images = False
-        h.images_to_alt = False
-        h.single_line_break = False
-
-        # 如果指定了选择器，只转换选择器匹配的内容
+        # 指定了 selector 时，只转换命中部分（否则转换整页渲染 HTML）
+        html_chunk = full_html
         if selector:
             try:
                 el = page.locator(selector).first
                 if await el.count() > 0:
-                    selected_html = await el.inner_html()
-                    markdown = h.handle(selected_html)
-                else:
-                    markdown = h.handle(html)
+                    html_chunk = await el.inner_html()
             except Exception:
-                markdown = h.handle(html)
-        else:
-            markdown = h.handle(html)
+                pass
 
-        # 决定最终输出路径
-        if auto_name:
-            out = str(Path(out).parent / build_filename(url, title))
-        else:
-            out = str(out)
-            if not out.lower().endswith('.md'):
-                out = out + '.md'
-
-        # 保存 Markdown 文件
-        Path(out).parent.mkdir(parents=True, exist_ok=True)
-        with open(out, 'w', encoding='utf-8') as f:
-            f.write(markdown)
+        # 一次抓取，按请求的多格式分别派生落盘
+        formats = parse_formats(fmt_arg)
+        out_map = resolve_outputs(out, url, title, formats, auto_name)
+        outputs = []
+        for fmt in formats:
+            content = html_to_format(html_chunk, fmt)
+            write_output(out_map[fmt], content)
+            outputs.append({'format': fmt, 'path': out_map[fmt]})
 
         # 取一行文本预览（不落盘，仅回给插件作告知）
         if selector:
@@ -138,13 +113,19 @@ async def run(url: str, out: str, selector: str | None, auto_name: bool) -> dict
             except Exception:
                 text = ''
 
-        return {'savedTo': out, 'status': 1, 'preview': (text or '')[:2000], 'title': title}
+        return {
+            'savedTo': outputs[0]['path'],
+            'status': 1,
+            'preview': (text or '')[:2000],
+            'title': title,
+            'format': fmt_arg,
+            'outputs': outputs,
+        }
 
 
 async def main():
     # Windows 下子进程 stdout 默认 GBK，遇非 GBK 字符（如零宽空格 \u200b）会抛
     # UnicodeEncodeError；强制 UTF-8，与 dsh 侧 encoding='utf-8' 读取一致。
-    import sys
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
@@ -153,12 +134,16 @@ async def main():
     ap.add_argument('--url', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--selector', default=None)
-    ap.add_argument('--auto-name', action='store_true', help='用 站点_标题_时间戳.html 命名')
+    ap.add_argument('--format', default=DEFAULT_FORMAT,
+                    help='输出格式，逗号分隔可多选，如 html,md,skeleton（默认 md）')
+    ap.add_argument('--auto-name', action='store_true',
+                    help='用 站点_标题_时间戳.<各格式扩展名> 命名')
     a = ap.parse_args()
     try:
-        result = await run(a.url, a.out, a.selector, a.auto_name)
+        result = await run(a.url, a.out, a.selector, a.auto_name, a.format)
     except Exception as e:
-        result = {'status': 0, 'savedTo': '', 'preview': f'ERROR: {e}', 'title': ''}
+        result = {'status': 0, 'savedTo': '', 'preview': f'ERROR: {e}',
+                  'title': '', 'format': a.format, 'outputs': []}
     # 仅 stdout 打单行 JSON，不落盘 JSON 文件
     print(json.dumps(result, ensure_ascii=False))
 
