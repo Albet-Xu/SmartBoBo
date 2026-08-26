@@ -54,6 +54,7 @@ export interface RpcMethodMap {
   'workspace.archiveSession': WorkspaceApi['archiveSession']
   'skill.list': SkillsApi['list']
   'skillLibrary.installLocal': SkillLibraryApi['installLocal']
+  'skillLibrary.discover': SkillLibraryApi['discover']
   'skillLibrary.toggle': SkillLibraryApi['toggle']
   'skillLibrary.uninstall': SkillLibraryApi['uninstall']
   'skillLibrary.createGroup': SkillLibraryApi['createGroup']

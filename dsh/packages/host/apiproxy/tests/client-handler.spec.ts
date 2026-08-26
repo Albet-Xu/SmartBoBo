@@ -94,6 +94,7 @@ function scriptedApi(overrides: {
     skills: { list: r => ok(r, { skills: [] }), ...overrides.skills },
     skillLibrary: {
       installLocal: r => ok(r, { ok: true }),
+      discover: r => ok(r, { skills: [] }),
       toggle: r => ok(r, { ok: true }),
       uninstall: r => ok(r, { ok: true }),
       createGroup: r => ok(r, { ok: true }),

@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { appendFile, cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { appendFile, cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
@@ -2107,6 +2107,53 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     return `group-${Date.now()}`
   }
 
+  /**
+   * Enumerate valid, on-disk skills under the user skills root. A skill counts
+   * when its `SKILL.md` frontmatter carries a kebab-case `name` and a
+   * `description` (the same gate `skill-filesystem` applies before loading).
+   * Entries are marked `enabled: false` and ungrouped because they are not yet
+   * registered in the `skill-library` namespace.
+   */
+  const listUserSkillEntries = async (): Promise<SkillLibraryEntry[]> => {
+    const root = resolve(join(resolveDshHome(), 'skills'))
+    let names: string[]
+    try {
+      names = await readdir(root)
+    } catch {
+      return []
+    }
+    const entries: SkillLibraryEntry[] = []
+    for (const dir of names) {
+      const dirPath = join(root, dir)
+      let info
+      try {
+        info = await stat(dirPath)
+      } catch {
+        continue
+      }
+      if (!info.isDirectory()) continue
+      let raw: string
+      try {
+        raw = await readFile(join(dirPath, 'SKILL.md'), 'utf8')
+      } catch {
+        continue
+      }
+      const meta = readSkillFrontmatter(raw)
+      const name = meta.name
+      const description = meta.description
+      if (name === undefined || description === undefined || !isSkillName(name)) continue
+      entries.push({
+        name,
+        description,
+        source: 'local',
+        enabled: false,
+        group: null,
+        path: join(dirPath, 'SKILL.md'),
+      })
+    }
+    return entries
+  }
+
   /** Fold a submitted MCP config into the cordis row's config, emitting only provided fields. */
   const mcpRowConfig = (config: McpToolConfigView): Record<string, unknown> => {
     const result: Record<string, unknown> = {
@@ -3409,6 +3456,16 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         return ok(request, { ok: true })
       },
 
+      async discover(request) {
+        if (ctx.get('settings') === undefined) {
+          return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
+        }
+        const library = skillLibrarySection()
+        const registered = new Set(library.skills.map(entry => entry.name))
+        const discovered = (await listUserSkillEntries()).filter(entry => !registered.has(entry.name))
+        return ok(request, { skills: discovered })
+      },
+
       async toggle(request) {
         if (ctx.get('settings') === undefined) {
           return err(request, { code: 'settings-unavailable', message: 'settings service is not mounted', details: {} })
@@ -3416,7 +3473,19 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const { name, enabled } = request.payload
         const library = skillLibrarySection()
         if (!library.skills.some(entry => entry.name === name)) {
-          return err(request, { code: 'skill-not-found', message: `skill "${name}" is not in the library`, details: { name } })
+          // An auto-listed, unregistered on-disk skill becomes registered the
+          // first time it is toggled, so enabling it persists the library row.
+          const onDisk = (await listUserSkillEntries()).find(entry => entry.name === name)
+          if (onDisk === undefined) {
+            return err(request, { code: 'skill-not-found', message: `skill "${name}" is not in the library`, details: { name } })
+          }
+          const next = { ...library, skills: [...library.skills, { ...onDisk, enabled }] }
+          try {
+            await writeSkillLibrary(next)
+          } catch (error) {
+            return err(request, { code: 'settings-rejected', message: String(error), details: { ns: SKILL_LIBRARY_NS } })
+          }
+          return ok(request, { ok: true })
         }
         const next = { ...library, skills: library.skills.map(entry => entry.name === name ? { ...entry, enabled } : entry) }
         try {

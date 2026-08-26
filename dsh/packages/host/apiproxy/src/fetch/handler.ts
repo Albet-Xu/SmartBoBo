@@ -45,7 +45,8 @@ import {
 } from '../api/workspace.schema.ts'
 import { skillListRequestSchema } from '../api/skills.schema.ts'
 import {
-  skillLibraryCreateGroupRequestSchema, skillLibraryDeleteGroupRequestSchema, skillLibraryInstallLocalRequestSchema,
+  skillLibraryCreateGroupRequestSchema, skillLibraryDeleteGroupRequestSchema, skillLibraryDiscoverRequestSchema,
+  skillLibraryInstallLocalRequestSchema,
   skillLibraryMoveToGroupRequestSchema, skillLibraryRenameGroupRequestSchema, skillLibraryToggleRequestSchema,
   skillLibraryUninstallRequestSchema,
 } from '../api/skill-library.schema.ts'
@@ -126,6 +127,7 @@ const UNARY_ROUTES: UnaryRoutes = {
   'workspace.archiveSession': { schema: workspaceArchiveSessionRequestSchema, invoke: (api, r) => api.workspace.archiveSession(r) },
   'skill.list': { schema: skillListRequestSchema, invoke: (api, r) => api.skills.list(r) },
   'skillLibrary.installLocal': { schema: skillLibraryInstallLocalRequestSchema, invoke: (api, r) => api.skillLibrary.installLocal(r) },
+  'skillLibrary.discover': { schema: skillLibraryDiscoverRequestSchema, invoke: (api, r) => api.skillLibrary.discover(r) },
   'skillLibrary.toggle': { schema: skillLibraryToggleRequestSchema, invoke: (api, r) => api.skillLibrary.toggle(r) },
   'skillLibrary.uninstall': { schema: skillLibraryUninstallRequestSchema, invoke: (api, r) => api.skillLibrary.uninstall(r) },
   'skillLibrary.createGroup': { schema: skillLibraryCreateGroupRequestSchema, invoke: (api, r) => api.skillLibrary.createGroup(r) },

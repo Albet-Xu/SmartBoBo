@@ -16,8 +16,8 @@ const icons = Object.fromEntries(
 const iconNames = Object.keys(icons)
 
 describe('ic_ds_ icon set', () => {
-  it('exports the full icon set (46 deepsuite + 20 figma extracts + four product glyphs outside those sets)', () => {
-    expect(iconNames.length).toBe(70)
+  it('exports the full icon set (73 icon components: deepsuite + figma extracts + product glyphs)', () => {
+    expect(iconNames.length).toBe(73)
   })
 
   it.each(iconNames)('%s renders an svg with currentColor fills and no hardcoded palette', (name) => {
@@ -55,13 +55,15 @@ describe('ic_ds_ icon set', () => {
 })
 
 describe('FishLogo', () => {
-  it('renders the fish path in currentColor at the native ratio', () => {
+  it('renders the brand silhouette (pineapple) in currentColor at the native ratio', () => {
     const { container } = render(<primitives.FishLogo />)
     const svg = container.querySelector('svg')!
     expect(svg.getAttribute('width')).toBe('24')
-    expect(Number(svg.getAttribute('height'))).toBeCloseTo(17.66, 1)
-    expect(svg.getAttribute('viewBox')).toBe('0 0 23.16 17.04')
-    expect(container.querySelectorAll('path')).toHaveLength(1)
+    // Pineapple logo keeps the 30:34 width-to-height ratio (was the fish 23.16:17.04).
+    expect(Number(svg.getAttribute('height'))).toBeCloseTo(27.2, 1)
+    expect(svg.getAttribute('viewBox')).toBe('0 0 30 34')
+    // Multiple paths (crown + body + cross-hatch texture), not the single fish path.
+    expect(container.querySelectorAll('path').length).toBeGreaterThan(1)
     expect(container.innerHTML).toContain('currentColor')
     expect(container.innerHTML).not.toContain('M0 0L23.16')
   })

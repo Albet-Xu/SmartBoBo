@@ -49,13 +49,21 @@ user-invocable: false
 
 ## 第 3 步：安装技能包
 
-目标：把技能放进技能发现根目录，让「技能库」自动出现并可供模型调用。
+目标：把技能放进技能发现根目录，**并登记到「技能库」**（`$DSH_HOME/settings.yaml` 的 `skill-library` 命名空间）。⚠️ **前端「技能库」只读 `skill-library` 命名空间，不会扫描磁盘上的 `skills/` 目录**；只复制文件夹而不登记，技能不会在 UI 里出现（会被 `skill-filesystem` 发现但前端看不到）。
 
 1. 克隆/下载含 `SKILL.md` 的仓库（临时目录），或直接拉取 `SKILL.md`。
-2. 校验：目录根部必须有 `SKILL.md`，且 frontmatter 含 `name` 与 `description`；`name` 合法格式为 kebab-case `^[a-z0-9]+(?:-[a-z0-9]+)*$`。
-3. 放置：把整个技能目录复制到 `$DSH_HOME/skills/<技能名>/`（用户根，`skill-filesystem` 的 Chokidar 监听会自动发现，**无需重启**）。若希望仅本机项目内使用，可放项目根 `.agents/skills/<技能名>/`。
-4. 去重：若 `$DSH_HOME/skills/` 已存在同名技能，先跟用户确认是覆盖还是跳过。
-5. 生效并汇报：skill 发现是即时的，教程即在「技能库」立即出现。
+2. 校验：目录根部必须有 `SKILL.md`，且 frontmatter 含 `name` 与 `description`；`name` 必须是 kebab-case `^[a-z0-9]+(?:-[a-z0-9]+)*$`（只允许小写字母、数字与连字符，**不能用下划线**）。若仓库/作者名带下划线（如 `hello_js_reverse_skill`），安装前把 `SKILL.md` 的 `name` 改为合法 kebab 名（如 `hello-js-reverse-skill`），并以此为目录名——否则 `skill-filesystem` 会忽略它，前端安装接口也会拒绝。
+3. 放置：把**改名后的**技能目录复制到 `$DSH_HOME/skills/<技能名>/`（`skill-filesystem` 的 Chokidar 监听自动发现，供模型调用，**无需重启**）。若希望仅本机项目内使用，可放项目根 `.agents/skills/<技能名>/`（注意：前端「技能库」同样不列此目录，仍需登记才显示）。
+4. **登记（关键）**：把该技能追加登记进 `$DSH_HOME/settings.yaml` 的 `skill-library.skills` 列表，新增一条：
+   - `name: <技能名>`（与目录名一致，kebab-case）
+   - `description: <SKILL.md frontmatter 里的 description>`
+   - `source: local`
+   - `enabled: true`
+   - `group: null`（或既有分组 id）
+   - `path: $DSH_HOME/skills/<技能名>/SKILL.md`
+   登记后「技能库」才会显示它，开关启用状态也可管理。
+5. 去重：复制前若 `$DSH_HOME/skills/` 已存在同名技能，先跟用户确认是覆盖还是跳过；登记前检查 `skill-library.skills` 是否已存在同名条目，避免重复追加。
+6. 生效并汇报：`skill-filesystem` 发现是即时的；技能出现在「技能库」需要**完成第 4 步登记**。汇报时说明：已复制到 `$DSH_HOME/skills/<技能名>/` 并登记进 `skill-library`，请到「设置 → 技能库」确认它已出现且可启用。
 
 ## 第 4 步：校验与汇报
 

@@ -40,8 +40,8 @@ const SEARCH_QUERY_MAX_CODE_UNITS = 500
 const COLLAPSED_SESSION_LIMIT = 5
 
 /** Local DBX Web service origin (backend + bundled static frontend), launch
-    scripts drive the exact port (default 4224). */
-const DBX_WEB_URL = 'http://localhost:4224'
+    scripts drive the exact port (default 4223). */
+const DBX_WEB_URL = 'http://localhost:4223'
 
 /** Keep controlled input and RPC payload inside the session.search wire contract. */
 function sanitizeSearchQuery(value: string): string {

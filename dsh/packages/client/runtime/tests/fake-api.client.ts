@@ -250,6 +250,7 @@ export class FakeApiClient implements IApiClient {
 
   readonly skillLibrary: IApiClient['skillLibrary'] = {
     installLocal: (payload: unknown) => this.record('skillLibrary.installLocal', payload, Promise.resolve(ok({ ok: true as const }))),
+    discover: (payload: unknown) => this.record('skillLibrary.discover', payload, Promise.resolve(ok({ skills: [] as const }))),
     toggle: (payload: unknown) => this.record('skillLibrary.toggle', payload, Promise.resolve(ok({ ok: true as const }))),
     uninstall: (payload: unknown) => this.record('skillLibrary.uninstall', payload, Promise.resolve(ok({ ok: true as const }))),
     createGroup: (payload: unknown) => this.record('skillLibrary.createGroup', payload, Promise.resolve(ok({ ok: true as const }))),

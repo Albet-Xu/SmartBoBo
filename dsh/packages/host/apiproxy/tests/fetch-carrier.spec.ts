@@ -227,6 +227,9 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async installLocal(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
       },
+      async discover(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { skills: [] } } }
+      },
       async toggle(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { ok: true } } }
       },

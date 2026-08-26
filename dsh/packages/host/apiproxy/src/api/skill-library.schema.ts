@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
+import type { SkillLibraryEntry } from './skill-library.ts'
 
 /** Shared ok acknowledgement value for every skillLibrary write method. */
 export const skillLibraryOkValueSchema = z.object({
@@ -22,6 +23,26 @@ export const skillLibraryInstallLocalRequestSchema = z.object({
 
 /** skillLibrary.installLocal response value. */
 export const skillLibraryInstallLocalValueSchema = skillLibraryOkValueSchema satisfies z.ZodType<Wire<ResponseValue<'skillLibrary.installLocal'>>>
+
+// ---- skillLibrary.discover ----
+
+/** One skill-library entry, used to represent an on-disk but unregistered skill. */
+export const skillLibraryEntrySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  source: z.enum(['local', 'http', 'github', 'runtime']),
+  enabled: z.boolean(),
+  group: z.string().nullable(),
+  path: z.string().optional(),
+}) satisfies z.ZodType<Wire<SkillLibraryEntry>>
+
+/** skillLibrary.discover request payload (empty). */
+export const skillLibraryDiscoverRequestSchema = z.object({}) satisfies z.ZodType<Wire<RequestPayload<'skillLibrary.discover'>>>
+
+/** skillLibrary.discover response value. */
+export const skillLibraryDiscoverValueSchema = z.object({
+  skills: z.array(skillLibraryEntrySchema),
+}) satisfies z.ZodType<Wire<ResponseValue<'skillLibrary.discover'>>>
 
 // ---- skillLibrary.toggle ----
 

@@ -119,8 +119,9 @@ export class SkillsStore {
         if (Array.isArray(section.skills)) skillsRaw = section.skills
         if (Array.isArray(section.groups)) groupsRaw = section.groups
       }
-      const skills = skillsRaw.flatMap(toSkillConfig)
+      const registeredSkills = skillsRaw.flatMap(toSkillConfig)
       const groups = groupsRaw.flatMap(toSkillGroup)
+      const skills = await this.mergeDiscovered(registeredSkills)
       if (generation !== this.generation) return
       this.store.update((state) => {
         state.status = 'ready'
@@ -142,6 +143,22 @@ export class SkillsStore {
   refresh(): void {
     if (this.store.getSnapshot().status === 'idle') return
     void this.load()
+  }
+
+  /** Merge on-disk skills present under the user skills root that are not yet registered, so an AI/CLI-installed skill shows up in the library view. */
+  private async mergeDiscovered(registered: SkillConfig[]): Promise<SkillConfig[]> {
+    const known = new Set(registered.map(skill => skill.name))
+    try {
+      const response = await this.api.skillLibrary.discover({})
+      if (!response.result.ok) return registered
+      return registered.concat(
+        response.result.value.skills
+          .filter(entry => !known.has(entry.name))
+          .flatMap(toSkillConfig),
+      )
+    } catch {
+      return registered
+    }
   }
 
   /** Toggle skill enabled state. */

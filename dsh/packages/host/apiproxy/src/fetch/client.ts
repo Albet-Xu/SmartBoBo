@@ -42,7 +42,8 @@ import {
 } from '../api/workspace.schema.ts'
 import { skillListValueSchema } from '../api/skills.schema.ts'
 import {
-  skillLibraryCreateGroupValueSchema, skillLibraryDeleteGroupValueSchema, skillLibraryInstallLocalValueSchema,
+  skillLibraryCreateGroupValueSchema, skillLibraryDeleteGroupValueSchema,
+  skillLibraryDiscoverValueSchema, skillLibraryInstallLocalValueSchema,
   skillLibraryMoveToGroupValueSchema, skillLibraryRenameGroupValueSchema, skillLibraryToggleValueSchema,
   skillLibraryUninstallValueSchema,
 } from '../api/skill-library.schema.ts'
@@ -134,6 +135,7 @@ export interface IApiClient {
   }
   skillLibrary: {
     installLocal(payload: RequestPayload<'skillLibrary.installLocal'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.installLocal'>>>
+    discover(payload: RequestPayload<'skillLibrary.discover'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.discover'>>>
     toggle(payload: RequestPayload<'skillLibrary.toggle'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.toggle'>>>
     uninstall(payload: RequestPayload<'skillLibrary.uninstall'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.uninstall'>>>
     createGroup(payload: RequestPayload<'skillLibrary.createGroup'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'skillLibrary.createGroup'>>>
@@ -222,6 +224,7 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'workspace.archiveSession': workspaceArchiveSessionValueSchema,
   'skill.list': skillListValueSchema,
   'skillLibrary.installLocal': skillLibraryInstallLocalValueSchema,
+  'skillLibrary.discover': skillLibraryDiscoverValueSchema,
   'skillLibrary.toggle': skillLibraryToggleValueSchema,
   'skillLibrary.uninstall': skillLibraryUninstallValueSchema,
   'skillLibrary.createGroup': skillLibraryCreateGroupValueSchema,
@@ -491,6 +494,7 @@ export abstract class AbstractApiClient implements IApiClient {
 
   readonly skillLibrary: IApiClient['skillLibrary'] = {
     installLocal: (payload, signal) => this.callUnary('skillLibrary.installLocal', payload, signal),
+    discover: (payload, signal) => this.callUnary('skillLibrary.discover', payload, signal),
     toggle: (payload, signal) => this.callUnary('skillLibrary.toggle', payload, signal),
     uninstall: (payload, signal) => this.callUnary('skillLibrary.uninstall', payload, signal),
     createGroup: (payload, signal) => this.callUnary('skillLibrary.createGroup', payload, signal),

@@ -2791,6 +2791,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
     },
     skillLibrary: {
       installLocal: request => ok(request, { ok: true as const }),
+      discover: request => ok(request, { skills: [] as const }),
       toggle: request => ok(request, { ok: true as const }),
       uninstall: request => ok(request, { ok: true as const }),
       createGroup: request => ok(request, { ok: true as const }),
@@ -3121,6 +3122,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'workspace.archiveSession': return this.api.workspace.archiveSession(request)
       case 'skill.list': return this.api.skills.list(request)
       case 'skillLibrary.installLocal': return this.api.skillLibrary.installLocal(request)
+      case 'skillLibrary.discover': return this.api.skillLibrary.discover(request)
       case 'skillLibrary.toggle': return this.api.skillLibrary.toggle(request)
       case 'skillLibrary.uninstall': return this.api.skillLibrary.uninstall(request)
       case 'skillLibrary.createGroup': return this.api.skillLibrary.createGroup(request)

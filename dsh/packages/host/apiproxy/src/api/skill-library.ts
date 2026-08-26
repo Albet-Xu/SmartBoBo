@@ -61,6 +61,8 @@ export interface SkillLibrarySettings {
 export interface SkillLibraryApi {
   /** Copy a picked local skill folder under the user skills root and record it. */
   installLocal(request: RpcRequest<{ path: string }>): Promise<RpcResponse<{ ok: true }>>
+  /** Return on-disk skills under the user skills root that are not yet registered in the library. */
+  discover(request: RpcRequest<{}>): Promise<RpcResponse<{ skills: readonly SkillLibraryEntry[] }>>
   /** Toggle one entry's `enabled` flag. */
   toggle(request: RpcRequest<{ name: string; enabled: boolean }>): Promise<RpcResponse<{ ok: true }>>
   /** Remove an entry from the library and delete its bundled skill folder. */
