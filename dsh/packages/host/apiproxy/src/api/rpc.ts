@@ -82,6 +82,13 @@ export interface RpcErrorDetailsMap {
   'model-discovery-failed': { settingsNs: string; baseURL?: string }
   'title-invalid': { sessionId: SessionId }
   'fork-unavailable': { sessionId: SessionId }
+  /**
+   * session.delete was called on a Session whose own Agent is currently
+   * running, or whose running subagent lineage is non-empty. `reason`
+   * distinguishes the two cases for the UI's reason-specific copy; the
+   * subagent count lets the menu surface show the offending lineage count.
+   */
+  'session-running': { sessionId: SessionId; reason: 'agent-active' | 'subagent-active' | 'both'; runningSubagentCount: number }
   'subagent-parent-unavailable': { parentSessionId: SessionId }
   'subagent-not-found': { parentSessionId: SessionId; childSessionId: SessionId }
   'subagent-catalog-diagnostic': {

@@ -364,6 +364,27 @@ export class SqliteSessionPersistence extends SessionPersistence implements Pers
     }))
   }
 
+  /**
+   * Permanently destroy one session in a single transaction: drop every
+   * event row, then drop the header row. Foreign-key cascades clear any
+   * per-session derived tables attached by this store. Idempotent —
+   * `DELETE` returns zero changes on an absent id without raising.
+   */
+  async delete(id: SessionId, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
+    await this.ready
+    signal?.throwIfAborted()
+    this.db.exec('BEGIN')
+    try {
+      this.db.prepare('DELETE FROM events WHERE session_id = ?').run(id)
+      this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
   /** Close the database handle (awaited by the coordinator's dispose, post-drain). */
   async close(): Promise<void> {
     await this.ready

@@ -2733,6 +2733,56 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         agent.cancel({ kind: 'user' }, { keepInbox: true })
         return Promise.resolve(ok(request, { accepted: true as const }))
       },
+
+      async delete(request) {
+        const { sessionId } = request.payload
+        // Two-state truth: an attached Session owns a live Agent; a cold
+        // Session persists only. Either path can be the deletion target —
+        // refuse running first regardless of state.
+        const attached = ctx.sessions.get(sessionId)
+        const agent = ctx.agents.get(sessionId)
+        const persistence = ctx.get('sessionPersistence')
+        if (attached === undefined && agent === undefined && persistence === undefined) {
+          return err(request, {
+            code: 'session-not-found',
+            message: `session "${sessionId}" not found`,
+            details: { sessionId },
+          })
+        }
+        // Subagent running count covers the lineage through descendants.
+        let runningSubagentCount = 0
+        try {
+          const children = await ctx.subagents.listChildren(sessionId, request.signal)
+          for (const child of children) {
+            if (child.kind === 'child' && ctx.agents.get(child.id)?.status === 'running') runningSubagentCount++
+          }
+        } catch {
+          // Subagent catalog read failure MUST NOT mask the deletion verdict:
+          // fall through with runningSubagentCount = 0 (the agent check below
+          // is the authoritative guard for the parent's own activity).
+        }
+        const agentRunning = agent?.status === 'running'
+        if (agentRunning || runningSubagentCount > 0) {
+          return err(request, {
+            code: 'session-running',
+            message: `session "${sessionId}" is running and cannot be deleted`,
+            details: {
+              sessionId,
+              reason: agentRunning && runningSubagentCount > 0
+                ? 'both'
+                : agentRunning ? 'agent-active' : 'subagent-active',
+              runningSubagentCount,
+            },
+          })
+        }
+        // Tear down live state first: dispatch the session/disposed edge so
+        // the host-stream subscription at line 3906 emits host/session-removed
+        // to every client, which lets the runtime reap summaries and
+        // projection stores. Then evict the persisted log.
+        if (attached !== undefined) ctx.parallel('session/disposed', attached)
+        await persistence?.delete(sessionId, request.signal)
+        return ok(request, { deleted: true as const })
+      },
     },
 
     subagents: {

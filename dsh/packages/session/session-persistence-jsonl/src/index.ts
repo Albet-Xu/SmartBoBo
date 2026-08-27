@@ -469,6 +469,32 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     return snapshots
   }
 
+  /**
+   * Permanently destroy one session: remove its entire per-session directory
+   * so any zstd/none-compressed log and any intermediate state go with it.
+   * Idempotent — an absent id resolves without error so a delete call can
+   * race a re-list and not double-fault. `signal` aborts the underlying rm.
+   */
+  async delete(id: SessionId, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    signal?.throwIfAborted()
+    const projects = await this.listProjectDirs(signal)
+    for (const project of projects) {
+      signal?.throwIfAborted()
+      const dir = join(project, encodeSegment(id))
+      try {
+        const identity = await stat(dir)
+        if (!identity.isDirectory()) continue
+      } catch (error: unknown) {
+        if (isENOENT(error)) continue
+        throw error
+      }
+      await rm(dir, { recursive: true, force: true })
+      return
+    }
+  }
+
   private async listArtifacts(signal?: AbortSignal): Promise<Array<{ header: SessionHeader; path: string }>> {
     signal?.throwIfAborted()
     await this.ensureRootEncoding()

@@ -232,6 +232,19 @@ export class WorkspaceManager {
   }
 
   /**
+   * Permanently delete a session: the Host tears down the live Agent, removes
+   * the persisted log, and emits `host/session-removed` so client state is
+   * reaped. Callers own the error: a `session-running` rejection must surface
+   * as an in-modal message before the user retries.
+   * @param sessionId - session to destroy.
+   * @returns the wire result.
+   */
+  async deleteSession(sessionId: SessionId): Promise<RpcResult<{ deleted: true }>> {
+    const { result } = await this.api.sessions.delete({ sessionId })
+    return result
+  }
+
+  /**
    * Host-frame entry. Non-workspace frames are ignored so the runtime can
    * fan one host stream out to both object managers.
    * @param envelope - host stream envelope.

@@ -330,6 +330,21 @@ export class Session implements SessionFace {
   }
 
   /**
+   * Permanently delete this session. The Host tears down the live Agent,
+   * evicts descendant subagents, removes the persisted log, and emits
+   * `host/session-removed` to every client; rejection surfaces here
+   * unchanged so the menu caller can route by code (e.g. `session-running`).
+   * @returns the delete result; `result.ok === false` means the host refused.
+   */
+  async delete(): Promise<RpcResult<{ deleted: true }>> {
+    try {
+      return (await this.api.session.delete({ sessionId: this.sessionId })).result
+    } catch (error) {
+      return transportError(error)
+    }
+  }
+
+  /**
    * Rename: contract session.rename 1:1. On success settle the 'title'
    * projection cell from the response's `{title, seq}` under the store's
    * higher-seq-wins rule (the push frame arriving later is a no-op replay),

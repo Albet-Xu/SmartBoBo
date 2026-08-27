@@ -27,3 +27,17 @@
         # .venv 与 scripts（跨机器、跨平台可移植，无需环境变量）。
         dataDir: ''
         timeoutMs: 120000
+
+    # 本地 Camoufox 搜索 provider（web_search）：替换 DeepSeek 云搜索。
+    # engine 默认 baidu（国内直连、返回真实 URL）；可选 bing（有反爬投毒问题，不推荐）。
+    - id: web-search-camoufox
+      name: '@deepseek-ai/dsh-web-search-camoufox'
+      config:
+        engine: baidu
+        timeoutMs: 90000
+
+# 把 web 搜索从 deepseek-official 切到 camoufox，实现“彻底的本地化搜索替换”。
+# 注意：overlay 会整体替换该插件行的 config，故此处必须把需要的字段写全。
+- id: web
+  config:
+    searchProvider: camoufox

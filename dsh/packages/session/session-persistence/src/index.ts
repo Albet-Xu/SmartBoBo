@@ -238,6 +238,16 @@ export abstract class SessionPersistence extends Service {
    * @returns one header and opaque revision per materialized session without loading full logs.
    */
   abstract listSnapshots(signal?: AbortSignal): Promise<SessionPersistenceSnapshot[]>
+
+  /**
+   * Permanently destroy one session's durable state: every event and the
+   * persisted header. Idempotent — deleting an absent id resolves without
+   * error. Backends that maintain a per-session derived artifact (FTS index,
+   * search cache) MUST clear it here so a stale row cannot survive a delete.
+   * @param id - the session to destroy.
+   * @param signal - optional cancellation for backend delete work.
+   */
+  abstract delete(id: SessionId, signal?: AbortSignal): Promise<void>
 }
 
 export default SessionPersistence

@@ -370,4 +370,14 @@ export interface SessionsApi {
    */
   cancel(request: RpcRequest<{ sessionId: SessionId }>): Promise<RpcResponse<{ accepted: true }>>
 
+  /**
+   * Permanently deletes a Session: tears down its live Agent, evicts every
+   * owned descendant, removes the persisted log (and any attached search
+   * index), and emits `host/session-removed` so client state is reaped.
+   * Rejected with `session-running` while the Agent or any subagent on the
+   * lineage is active — callers must stop first. Rejected with
+   * `session-not-found` when no such Session is known.
+   */
+  delete(request: RpcRequest<{ sessionId: SessionId }>): Promise<RpcResponse<{ deleted: true }>>
+
 }
