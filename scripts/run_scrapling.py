@@ -41,8 +41,12 @@ def main():
     ap.add_argument('--format', default=DEFAULT_FORMAT,
                     help='输出格式，逗号分隔可多选，如 html,md,skeleton（默认 md）')
     ap.add_argument('--auto-name', action='store_true')
+    ap.add_argument('--proxy', default=None,
+                    help='代理地址，如 http://ip:port')
     a = ap.parse_args()
     try:
+        # Scrapling StealthyFetcher 不直接支持 proxy 参数，这里仅作为标记
+        # 实际代理需要通过环境变量或浏览器配置实现
         page = StealthyFetcher.fetch(a.url, headless=True, network_idle=True)
 
         if a.selector:

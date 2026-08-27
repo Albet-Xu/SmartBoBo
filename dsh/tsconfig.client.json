@@ -92,6 +92,7 @@
     { "path": "./packages/client/ui-settings-models" },
     { "path": "./packages/client/ui-settings-mcp" },
     { "path": "./packages/client/ui-settings-skills" },
+    { "path": "./packages/client/ui-settings-proxy" },
     { "path": "./packages/client/ui-settings-plugin-inventory" },
     { "path": "./packages/client/locale" },
     { "path": "./packages/client/web" },

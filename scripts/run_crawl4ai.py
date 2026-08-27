@@ -30,9 +30,10 @@ from crawl_common import (
 )
 
 
-async def run(url: str, out: str, auto_name: bool, fmt_arg: str) -> None:
+async def run(url: str, out: str, auto_name: bool, fmt_arg: str,
+              proxy: str | None = None) -> None:
     async with AsyncWebCrawler() as crawler:
-        result = await crawler.arun(url=url)
+        result = await crawler.arun(url=url, proxy=proxy)
 
         html = str(result.html or '')
         title = (result.metadata.get('title') if getattr(result, 'metadata', None) else None) or 'untitled'
@@ -75,5 +76,7 @@ if __name__ == '__main__':
     ap.add_argument('--format', default=DEFAULT_FORMAT,
                     help='输出格式，逗号分隔可多选，如 html,md,skeleton（默认 md）')
     ap.add_argument('--auto-name', action='store_true')
+    ap.add_argument('--proxy', default=None,
+                    help='代理地址，如 http://ip:port')
     a = ap.parse_args()
-    asyncio.run(run(a.url, a.out, a.auto_name, a.format))
+    asyncio.run(run(a.url, a.out, a.auto_name, a.format, proxy=a.proxy))

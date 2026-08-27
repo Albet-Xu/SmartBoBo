@@ -59,10 +59,12 @@ async def dismiss_cookie_overlays(page) -> None:
             continue
 
 
-async def run(url: str, out: str, selector: str | None, auto_name: bool, fmt_arg: str) -> dict:
+async def run(url: str, out: str, selector: str | None, auto_name: bool, fmt_arg: str,
+              proxy: str | None = None) -> dict:
     async with AsyncCamoufox(
         headless=True,
         exclude_addons=[DefaultAddons.UBO],
+        proxy={'server': proxy} if proxy else None,
     ) as browser:
         page = await browser.new_page()
         try:
@@ -138,9 +140,11 @@ async def main():
                     help='输出格式，逗号分隔可多选，如 html,md,skeleton（默认 md）')
     ap.add_argument('--auto-name', action='store_true',
                     help='用 站点_标题_时间戳.<各格式扩展名> 命名')
+    ap.add_argument('--proxy', default=None,
+                    help='代理地址，如 http://ip:port 或 socks5://ip:port')
     a = ap.parse_args()
     try:
-        result = await run(a.url, a.out, a.selector, a.auto_name, a.format)
+        result = await run(a.url, a.out, a.selector, a.auto_name, a.format, proxy=a.proxy)
     except Exception as e:
         result = {'status': 0, 'savedTo': '', 'preview': f'ERROR: {e}',
                   'title': '', 'format': a.format, 'outputs': []}

@@ -13,6 +13,9 @@ rem  Usage: double-click this file, or run it in a terminal.
 rem ============================================================
 setlocal
 
+rem --- Ensure node and pnpm are in PATH for double-click launches ---
+set "PATH=D:\Application\node.js;D:\Application\MCP\npm_global;%PATH%"
+
 rem --- Project root = this script's folder (strip trailing \) ---
 set "BOBO_ROOT=%~dp0"
 if "%BOBO_ROOT:~-1%"=="\" set "BOBO_ROOT=%BOBO_ROOT:~0,-1%"
@@ -26,9 +29,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem --- Start the DBX database web service in its own window (best-effort).
-rem     If the runtime is missing, BoBo still starts; only the in-app
-rem     "数据库" panel is unavailable. Env is inherited by the new window. ---
+rem --- Start the DBX database web service in its own window ---
 set "DBX_BIN=%BOBO_ROOT%\dbx-runtime\dbx-web.exe"
 if exist "%DBX_BIN%" (
   set "DBX_STATIC_DIR=%BOBO_ROOT%\dbx-runtime\dist"
@@ -38,9 +39,7 @@ if exist "%DBX_BIN%" (
   start "BoBo DBX (http://localhost:4224)" "%DBX_BIN%"
 ) else (
   echo [WARN] DBX runtime not found at "%DBX_BIN%".
-  echo        Database panel unavailable. Rebuild it first:
-  echo        E.g. run the cargo build + frontend build and copy into dbx-runtime
-  echo        (see docs\说明文档\20-DBX数据库集成操作指南.md).
+  echo        Database panel unavailable.
 )
 
 rem --- Start the web server (long-running). Keep window on error ---
@@ -50,6 +49,6 @@ if not "%rc%"=="0" (
   echo.
   echo [ERROR] "pnpm bobo" exited with code %rc%.
   echo         See the messages above. Fix and run again.
-  pause
 )
+pause
 endlocal

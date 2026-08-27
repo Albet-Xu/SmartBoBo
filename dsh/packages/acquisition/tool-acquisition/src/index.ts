@@ -24,6 +24,28 @@ import { promisify } from 'node:util'
 import { dirname, join, resolve } from 'node:path'
 import { existsSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+// Proxy support: fold proxy/enabled from session events
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
+
+/** Fold proxy mode from session events (last proxy/enabled wins). */
+function foldProxyEnabled(events: readonly SessionEvent[]): boolean {
+  let enabled = false
+  for (const event of events) {
+    if ((event as any).type === 'proxy/enabled') enabled = (event as any).data.enabled
+  }
+  return enabled
+}
+
+const PROXY_POOL_NAMESPACE = 'proxy-pool'
+
+/** ProxyPoolConfig from settings. */
+interface ProxyPoolConfig {
+  sources: Array<{ name: string; apiUrl: string; apiKey: string; pwd: string; getnum: number; httptype: string; geshi: string; fenge: string; enabled: boolean }>
+  fetchStrategy: 'cache' | 'realtime'
+  enabled: boolean
+  maxRetries: number
+  timeoutMs: number
+}
 
 const execFileAsync = promisify(execFile)
 
@@ -212,15 +234,139 @@ export function apply(ctx: Context, config: Config): void {
       // 若调用方指定了 outFile，则作为目标文件名基座（缺失的格式扩展名由脚本补全）。
       const outBase = args.outFile ?? 'crawl_auto'
 
-      const scriptArgs = [
+      // ── Proxy support ──────────────────────────────────────────────────
+      // Check if proxy mode is enabled for this session
+      const agent = exec.agent
+      const proxyEnabled = agent ? foldProxyEnabled(agent.session.events) : false
+      let proxyConfig: ProxyPoolConfig | null = null
+
+      if (proxyEnabled) {
+        // Try to read proxy pool config from settings
+        try {
+          const settingsApi = (ctx as any).get?.('settings')
+          if (settingsApi?.describe) {
+            const resp = await settingsApi.describe({})
+            if (resp.result?.ok) {
+              const ns = resp.result.value.namespaces.find((n: any) => n.ns === PROXY_POOL_NAMESPACE)
+              if (ns) proxyConfig = ns.value as ProxyPoolConfig
+            }
+          }
+        } catch {
+          // Settings not available, continue without proxy
+        }
+      }
+
+      // Build script args
+      const scriptBaseArgs = [
         join(scriptsDir, `run_${engine}.py`),
         '--url', args.url,
         '--out', join(dataDir, outBase),
         '--format', format,
       ]
-      if (!args.outFile) scriptArgs.push('--auto-name')
-      if (args.selector) scriptArgs.push('--selector', args.selector)
+      if (!args.outFile) scriptBaseArgs.push('--auto-name')
+      if (args.selector) scriptBaseArgs.push('--selector', args.selector)
 
+      // If proxy is enabled and configured, attempt with proxy (with retry)
+      const maxRetries = proxyConfig?.maxRetries ?? 3
+      if (proxyEnabled && proxyConfig?.enabled !== false && proxyConfig?.sources?.length) {
+        // Get a proxy via proxy_pool.py helper
+        const getProxyArgs = [
+          join(scriptsDir, 'proxy_pool.py'),
+          '--action', 'get',
+          '--config-json', JSON.stringify({
+            sources: proxyConfig.sources.filter((s: any) => s.enabled),
+            fetchStrategy: proxyConfig.fetchStrategy,
+            timeoutMs: proxyConfig.timeoutMs,
+          }),
+          '--target-url', args.url,
+        ]
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            // Get a proxy from the pool
+            const proxyRes = await execFileAsync(pythonBin, getProxyArgs,
+              { timeout: 15000, encoding: 'utf-8', windowsHide: true })
+            const proxyData = JSON.parse(proxyRes.stdout)
+            if (!proxyData.proxy) {
+              // No proxy available, try without
+              if (attempt === maxRetries) {
+                // Last attempt, ask user
+                const msg = '代理池无可用代理，是否走本地网络进行访问网页？'
+                throw new Error(`PROXY_FAILED: ${msg}`)
+              }
+              continue
+            }
+
+            const proxyArg = proxyData.proxy
+            const scriptArgs = [...scriptBaseArgs, '--proxy', proxyArg]
+
+            try {
+              const res = await execFileAsync(pythonBin, scriptArgs,
+                { timeout: config.timeoutMs ?? 180_000, encoding: 'utf-8', windowsHide: true })
+              const stdout = res.stdout
+              let result: any = {}
+              try { result = JSON.parse(stdout) } catch { /* ignore */ }
+
+              // Check if result indicates success (status != 0 usually means HTTP status)
+              if (result.status && result.status !== 0) {
+                // Mark proxy as failed for next attempt
+                await execFileAsync(pythonBin, [
+                  join(scriptsDir, 'proxy_pool.py'),
+                  '--action', 'fail',
+                  '--proxy', proxyArg,
+                ], { timeout: 5000, encoding: 'utf-8', windowsHide: true }).catch(() => {})
+
+                if (attempt < maxRetries) continue
+                // Last attempt, return result (may be partial success)
+                const outputs = Array.isArray(result.outputs)
+                  ? result.outputs.map((o: any) => ({ format: String(o?.format ?? ''), path: String(o?.path ?? '') }))
+                  : []
+                return {
+                  savedTo: String(result.savedTo ?? ''),
+                  status: result.status ?? 0,
+                  contentPreview: String(result.preview ?? '').slice(0, 2000),
+                  format: String(result.format ?? format),
+                  outputs,
+                }
+              }
+
+              // Success
+              const outputs = Array.isArray(result.outputs)
+                ? result.outputs.map((o: any) => ({ format: String(o?.format ?? ''), path: String(o?.path ?? '') }))
+                : []
+              return {
+                savedTo: String(result.savedTo ?? ''),
+                status: result.status ?? 0,
+                contentPreview: String(result.preview ?? '').slice(0, 2000),
+                format: String(result.format ?? format),
+                outputs,
+              }
+            } catch (scriptErr: any) {
+              // Script execution failed, mark proxy and retry
+              await execFileAsync(pythonBin, [
+                join(scriptsDir, 'proxy_pool.py'),
+                '--action', 'fail',
+                '--proxy', proxyArg,
+              ], { timeout: 5000, encoding: 'utf-8', windowsHide: true }).catch(() => {})
+
+              if (attempt < maxRetries) continue
+              const msg = String(scriptErr?.stderr ?? scriptErr?.message ?? scriptErr)
+              throw new Error(`crawl_fetch 后台脚本执行失败（代理模式，已重试${maxRetries}次）: ${msg}`)
+            }
+          } catch (err: any) {
+            if (String(err.message).startsWith('PROXY_FAILED:')) {
+              // All proxies exhausted, ask user via model (throw error for model to handle)
+              throw new Error(`代理失效，是否走本地网络进行访问网页？(已重试${maxRetries}次)`)
+            }
+            if (attempt < maxRetries) continue
+            const msg = String(err?.stderr ?? err?.message ?? err)
+            throw new Error(`crawl_fetch 代理模式失败: ${msg}`)
+          }
+        }
+      }
+
+      // No proxy or proxy disabled: run directly (existing behavior)
+      const scriptArgs = scriptBaseArgs
       let stdout: string
       try {
         const res = await execFileAsync(pythonBin, scriptArgs,
