@@ -1,0 +1,1 @@
+function e(e,t){return t.connectionId===e.connectionId&&t.operationId===e.operationId&&t.generation===e.generation}function t(e,t){let r=n(e)||1n,i=n(t);return i===0n||i<r?{index:`1`,reset:!0}:{index:t??`1`,reset:!1}}function n(e){try{return BigInt(e??`0`)}catch{return 0n}}export{t as n,e as t};

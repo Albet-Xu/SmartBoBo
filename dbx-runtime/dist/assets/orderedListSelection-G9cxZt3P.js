@@ -1,0 +1,1 @@
+function e(e){return e.shiftKey?`range`:e.metaKey||e.ctrlKey?`toggle`:`single`}function t(e,t,n){if(t!==null&&t>=0&&t<e.length)return t;if(!n)return null;let r=e.findIndex(e=>e.type===n.type&&e.id===n.id);return r>=0?r:null}export{e as n,t};

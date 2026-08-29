@@ -1,0 +1,18 @@
+{
+  "jre_version": null,
+  "jre_versions": {
+    "21": "21.0.12+kerberos.ec.2"
+  },
+  "installed_drivers": {
+    "kafka": {
+      "version": "0.1.13",
+      "installed_at": "2026-08-28T01:16:48.210356100+00:00",
+      "jre": "21"
+    }
+  },
+  "java_runtime": {
+    "mode": "managed",
+    "custom_java_path": null
+  },
+  "pending_jre_cleanup": []
+}

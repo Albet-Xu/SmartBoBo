@@ -1,0 +1,1 @@
+import{Sn as e}from"./ui-_QCPiEHC.js";import{r as t,t as n}from"./safeStorage-CqBeTkCx.js";var r=`dbx-sql-file-folders`,i=e(0);function a(){try{let e=n(r);if(!e)return[];let t=JSON.parse(e);return Array.isArray(t)?t.filter(e=>typeof e==`string`):[]}catch{return[]}}function o(e){t(r,JSON.stringify(e)),i.value++}function s(){i.value++}export{i,s as n,o as r,a as t};

@@ -1,0 +1,1 @@
+import{n as e}from"./rolldown-runtime-Dd_uD5pT.js";var t=e({isTauriRuntime:()=>n});function n(e=globalThis){return!!(e.__TAURI_INTERNALS__||e.__TAURI__)}export{t as n,n as t};

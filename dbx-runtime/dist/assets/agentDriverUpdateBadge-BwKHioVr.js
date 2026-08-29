@@ -1,0 +1,1 @@
+function e(e){return e.filter(e=>e.update_available).length}function t(t,n){return e(t)+ +!!n?.update_available}export{t as n,e as t};

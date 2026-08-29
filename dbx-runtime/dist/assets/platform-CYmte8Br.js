@@ -1,0 +1,1 @@
+function e(){let e=navigator.userAgent.toLowerCase();return e.includes(`mac`)?`macos`:e.includes(`win`)?`windows`:e.includes(`linux`)?`linux`:`unknown`}function t(){return e()===`macos`}function n(){return e()===`windows`}export{n,t};

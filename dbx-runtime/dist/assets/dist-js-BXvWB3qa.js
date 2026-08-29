@@ -1,0 +1,1 @@
+import{a as e}from"./core-bZKCCQDm.js";async function t(){await e(`plugin:process|restart`)}export{t as relaunch};

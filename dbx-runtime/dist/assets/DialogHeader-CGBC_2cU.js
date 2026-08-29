@@ -1,0 +1,1 @@
+import{An as e,Ot as t,Pt as n,Zt as r,en as i,jn as a}from"./ui-_QCPiEHC.js";import{t as o}from"./utils-DR6GLumw.js";var s=n({__name:`DialogHeader`,props:{class:{type:[Boolean,null,String,Object,Array]}},setup(n){let s=n;return(n,c)=>(r(),t(`div`,{"data-slot":`dialog-header`,class:a(e(o)(`gap-2 flex flex-col`,s.class))},[i(n.$slots,`default`)],2))}});export{s as t};

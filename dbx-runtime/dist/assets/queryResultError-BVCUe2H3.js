@@ -1,0 +1,1 @@
+var e=/there is currently no snapshot/i;function t(e){return e.execution_error===!0}function n(n){return!n||!t(n)||n.rows.length===0?!1:e.test(String(n.rows[0]?.[0]??``))}export{t as n,n as t};

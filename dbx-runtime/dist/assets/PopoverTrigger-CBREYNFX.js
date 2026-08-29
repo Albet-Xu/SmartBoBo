@@ -1,0 +1,1 @@
+import{An as e,Et as t,Ht as n,Pt as r,W as i,Zt as a,dn as o,en as s}from"./ui-_QCPiEHC.js";var c=r({__name:`PopoverTrigger`,props:{asChild:{type:Boolean},as:{}},setup(r){let c=r;return(r,l)=>(a(),t(e(i),n({"data-slot":`popover-trigger`},c),{default:o(()=>[s(r.$slots,`default`)]),_:3},16))}});export{c as t};

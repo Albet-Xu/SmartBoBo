@@ -1,0 +1,1 @@
+function e(e,t){if(e===-1||e<=0)return null;let n=Math.floor(e/86400),r=Math.floor(e%86400/3600),i=Math.floor(e%3600/60),a=e%60;return[[n,`redis.ttlDay`],[r,`redis.ttlHour`],[i,`redis.ttlMinute`],[a,`redis.ttlSecond`]].filter(([e])=>e>0).slice(0,2).map(([e,n])=>t(n,{count:e})).join(` `)}export{e as t};

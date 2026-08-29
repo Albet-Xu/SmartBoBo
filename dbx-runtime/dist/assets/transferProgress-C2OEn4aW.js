@@ -1,0 +1,1 @@
+function e(e){return e.terminal===!0||e.status===`done`||e.status===`cancelled`}export{e as t};

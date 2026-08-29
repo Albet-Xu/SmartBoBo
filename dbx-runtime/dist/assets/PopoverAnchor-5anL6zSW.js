@@ -1,0 +1,1 @@
+import{An as e,Et as t,Ht as n,Pt as r,Zt as i,dn as a,en as o,q as s}from"./ui-_QCPiEHC.js";var c=r({__name:`PopoverAnchor`,props:{reference:{},asChild:{type:Boolean},as:{}},setup(r){let c=r;return(r,l)=>(i(),t(e(s),n({"data-slot":`popover-anchor`},c),{default:a(()=>[o(r.$slots,`default`)]),_:3},16))}});export{c as t};

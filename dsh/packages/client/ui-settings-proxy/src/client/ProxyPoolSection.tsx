@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsLocale, PropsRuntime, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
@@ -87,7 +87,7 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
     }))
   }
 
-  const inputStyle = {
+  const inputStyle: CSSProperties = {
     width: '100%',
     boxSizing: 'border-box',
     padding: '8px 12px',

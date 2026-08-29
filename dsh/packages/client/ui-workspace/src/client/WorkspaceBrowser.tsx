@@ -39,9 +39,9 @@ const SEARCH_QUERY_MAX_CODE_UNITS = 500
 /** Session rows visible per Workspace before the local overflow control. */
 const COLLAPSED_SESSION_LIMIT = 5
 
-/** Local DBX Web service origin (backend + bundled static frontend), launch
-    scripts drive the exact port (default 4223). */
-const DBX_WEB_URL = 'http://localhost:4223'
+/** Local DBX Web service origin (backend + bundled static frontend); keep in
+    sync with DBX_PORT=4224 in 启动.cmd / 启动.sh. */
+const DBX_WEB_URL = 'http://localhost:4224'
 
 /** Keep controlled input and RPC payload inside the session.search wire contract. */
 function sanitizeSearchQuery(value: string): string {

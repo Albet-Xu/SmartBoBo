@@ -1,0 +1,1 @@
+import{Sn as e}from"./ui-_QCPiEHC.js";var t=globalThis.__DBX_TOAST_STATE__??(globalThis.__DBX_TOAST_STATE__={message:e(``),visible:e(!1),timer:0});function n(){function e(e,n=2e3){t.message.value=e,t.visible.value=!0,clearTimeout(t.timer),t.timer=window.setTimeout(()=>{t.visible.value=!1},n)}return{message:t.message,visible:t.visible,toast:e}}export{n as t};

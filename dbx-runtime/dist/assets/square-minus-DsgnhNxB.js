@@ -1,0 +1,1 @@
+import{t as e}from"./createLucideIcon-DTGCHDGZ.js";var t=e(`square-minus`,[[`rect`,{width:`18`,height:`18`,x:`3`,y:`3`,rx:`2`,key:`afitv7`}],[`path`,{d:`M8 12h8`,key:`1wcyev`}]]);export{t};

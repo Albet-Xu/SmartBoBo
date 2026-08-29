@@ -1,0 +1,1 @@
+function e(e){return e===`elasticsearch`||e===`easysearch`}function t(e){return e===`meilisearch`}export{t as n,e as t};
