@@ -89,6 +89,7 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
 
   const inputStyle = {
     width: '100%',
+    boxSizing: 'border-box',
     padding: '8px 12px',
     border: '1px solid #ccc',
     borderRadius: '6px',
@@ -110,34 +111,76 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
       </div>
 
       <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <label style={{ fontSize: '14px' }}>{t('enabled')}:</label>
-        <input
-          type="checkbox"
-          checked={localConfig.enabled}
-          onChange={(e) => {
-            setEdited(true)
-            setLocalConfig(prev => ({ ...prev, enabled: e.target.checked }))
-          }}
-        />
+        <label style={{ fontSize: '14px' }} htmlFor="proxy-pool-master-switch">{t('enabled')}:</label>
+        <label
+          htmlFor="proxy-pool-master-switch"
+          style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, cursor: 'pointer' }}
+        >
+          <input
+            id="proxy-pool-master-switch"
+            type="checkbox"
+            role="switch"
+            checked={localConfig.enabled}
+            onChange={(e) => {
+              setEdited(true)
+              setLocalConfig(prev => ({ ...prev, enabled: e.target.checked }))
+            }}
+            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, margin: 0 }}
+          />
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: 12,
+              background: localConfig.enabled ? '#0066cc' : '#cccccc',
+              transition: 'background 0.2s ease',
+            }}
+          />
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: 2,
+              left: 2,
+              width: 20,
+              height: 20,
+              borderRadius: 10,
+              background: '#ffffff',
+              transform: localConfig.enabled ? 'translateX(20px)' : 'translateX(0)',
+              transition: 'transform 0.2s ease',
+            }}
+          />
+        </label>
       </div>
 
       <div style={{ marginBottom: '16px' }}>
         <label style={labelStyle}>{t('fetchStrategy')}:</label>
-        <select
-          value={localConfig.fetchStrategy}
-          onChange={(e) => {
-            setEdited(true)
-            setLocalConfig(prev => ({ ...prev, fetchStrategy: e.target.value as 'cache' | 'realtime' }))
-          }}
-          style={inputStyle}
-        >
-          <option value="cache">{t('cacheStrategy')}</option>
-          <option value="realtime">{t('realtimeStrategy')}</option>
-        </select>
+        <div style={{ position: 'relative' }}>
+          <select
+            value={localConfig.fetchStrategy}
+            onChange={(e) => {
+              setEdited(true)
+              setLocalConfig(prev => ({ ...prev, fetchStrategy: e.target.value as 'cache' | 'realtime' }))
+            }}
+            style={{ ...inputStyle, appearance: 'none', paddingRight: '40px', cursor: 'pointer' }}
+          >
+            <option value="cache">{t('cacheStrategy')}</option>
+            <option value="realtime">{t('realtimeStrategy')}</option>
+          </select>
+          <span
+            aria-hidden="true"
+            style={{ position: 'absolute', top: '50%', right: '16px', transform: 'translateY(-50%)', pointerEvents: 'none', display: 'flex', color: '#666' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M4 5.5L7 8.5L10 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </div>
       </div>
 
       <div style={{ marginBottom: '16px', display: 'flex', gap: '12px' }}>
-        <div style={{ flex: 1 }}>
+        <div>
           <label style={labelStyle}>{t('maxRetries')}:</label>
           <input
             type="number"
@@ -148,10 +191,10 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
               setEdited(true)
               setLocalConfig(prev => ({ ...prev, maxRetries: Number(e.target.value) }))
             }}
-            style={inputStyle}
+            style={{ ...inputStyle, width: '140px' }}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label style={labelStyle}>{t('timeoutMs')}:</label>
           <input
             type="number"
@@ -162,7 +205,7 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
               setEdited(true)
               setLocalConfig(prev => ({ ...prev, timeoutMs: Number(e.target.value) }))
             }}
-            style={inputStyle}
+            style={{ ...inputStyle, width: '140px' }}
           />
         </div>
       </div>
@@ -197,23 +240,9 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
                 {t('deleteSource')}
               </button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <div>
-                <label style={{ fontSize: '12px' }}>{t('apiUrl')}</label>
-                <input type="text" value={source.apiUrl} onChange={(e) => updateSource(idx, { apiUrl: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px' }}>{t('apiKey')}</label>
-                <input type="text" value={source.apiKey} onChange={(e) => updateSource(idx, { apiKey: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px' }}>{t('pwd')}</label>
-                <input type="text" value={source.pwd} onChange={(e) => updateSource(idx, { pwd: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px' }}>{t('getnum')}</label>
-                <input type="number" value={source.getnum} min={1} onChange={(e) => updateSource(idx, { getnum: Number(e.target.value) })} style={inputStyle} />
-              </div>
+            <div>
+              <label style={{ fontSize: '12px' }}>{t('apiUrl')}</label>
+              <input type="text" value={source.apiUrl} onChange={(e) => updateSource(idx, { apiUrl: e.target.value })} style={inputStyle} />
             </div>
           </div>
         ))}

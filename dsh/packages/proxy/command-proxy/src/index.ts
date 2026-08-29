@@ -11,6 +11,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 // Import side-effect to trigger module augmentation for ctx.commands
@@ -130,27 +131,55 @@ export function apply(ctx: Context): void {
       description: 'Toggle proxy mode on/off for the current session',
       input: { hint: '[off]' },
       handler: ({ agent, rawInput }: CommandInvocation): CommandResult => {
-        const arg = rawInput.trim().toLowerCase()
-
-        // Determine target state: /proxy (no args) = toggle on, /proxy off = turn off
-        const current = foldProxyEnabled(agent.session.events)
-        const target = arg === 'off' ? false : !current
-
-        if (target === current) {
-          return {
-            kind: 'success',
-            text: target ? 'Proxy mode is already on.' : 'Proxy mode is already off.',
-          }
+        // Parse trailing input into an explicit on/off mode plus the remaining
+        // content to hand to the model. Bare `/proxy` means ON (idempotent);
+        // anything that is not a leading on/off keyword is treated as a crawl
+        // / edit intent and forwarded verbatim — it is never swallowed.
+        const trimmed = rawInput.trim()
+        const m = /^\s*(on|off)\b([\s\S]*)$/i.exec(trimmed)
+        let mode: boolean
+        let rest: string
+        if (m !== null) {
+          const [, kw, tail] = m
+          mode = (kw ?? '').toLowerCase() === 'on'
+          rest = (tail ?? '').trim()
+        } else {
+          mode = true
+          rest = trimmed
         }
 
-        // Append the state change to the session log.
-        agent.session.append('proxy/enabled' as any, { enabled: target } as any)
+        const current = foldProxyEnabled(agent.session.events)
+        if (mode !== current) {
+          // Append the state change to the session log.
+          agent.session.append('proxy/enabled' as any, { enabled: mode } as any)
+        }
+
+        const stateText = mode
+          ? '代理模式已开启，采集请求将走代理池。'
+          : '代理模式已关闭，采集请求将走本地网络。'
+
+        // Double channel: a short host ack card (deterministic fallback even if
+        // the model is unreachable) plus a model turn that speaks to the user.
+        if (rest !== '') {
+          // Route the remainder to the model as a normal user message so it
+          // handles the crawl / task through the (now on/off) proxy.
+          agent.followup(createUserMessage({
+            content: [{ type: 'text', text: rest }],
+            source: { kind: 'user' },
+          }))
+        } else {
+          // Bare on/off: ask the model to confirm the state change aloud.
+          agent.followup(createUserMessage({
+            content: [{ type: 'text', text: mode
+              ? '用户开启了代理模式，请向用户做一句简短确认（例如“代理模式已开启”）。'
+              : '用户关闭了代理模式，请向用户做一句简短确认（例如“代理模式已关闭”）。' }],
+            source: { kind: 'user' },
+          }))
+        }
 
         return {
           kind: 'success',
-          text: target
-            ? 'Proxy mode on. Crawl requests will use the configured proxy pool. Use /proxy off to disable.'
-            : 'Proxy mode off. Crawl requests will use the local network.',
+          text: rest !== '' ? `${stateText} 已把后续请求转给模型。` : stateText,
         }
       },
     })

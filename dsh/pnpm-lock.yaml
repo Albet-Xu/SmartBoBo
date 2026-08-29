@@ -18,6 +18,9 @@ importers:
       '@agentclientprotocol/sdk':
         specifier: 0.25.1
         version: 0.25.1(zod@4.4.3)
+      '@deepseek-ai/dsh-command-proxy':
+        specifier: workspace:^
+        version: link:packages/proxy/command-proxy
       '@deepseek-ai/dsh-tool-acquisition':
         specifier: workspace:^
         version: link:packages/acquisition/tool-acquisition
@@ -171,6 +174,9 @@ importers:
       '@deepseek-ai/dsh-command-goal':
         specifier: workspace:^
         version: link:../../packages/goal/command-goal
+      '@deepseek-ai/dsh-command-proxy':
+        specifier: workspace:^
+        version: link:../../packages/proxy/command-proxy
       '@deepseek-ai/dsh-compaction-basic':
         specifier: workspace:^
         version: link:../../packages/compaction/compaction-basic
@@ -5822,6 +5828,9 @@ importers:
 
   packages/proxy/command-proxy:
     dependencies:
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery

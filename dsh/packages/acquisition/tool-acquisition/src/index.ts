@@ -287,6 +287,11 @@ export function apply(ctx: Context, config: Config): void {
             const proxyRes = await execFileAsync(pythonBin, getProxyArgs,
               { timeout: 15000, encoding: 'utf-8', windowsHide: true })
             const proxyData = JSON.parse(proxyRes.stdout)
+            if (proxyData?.failed === true) {
+              // 代理池内部已跑满 3 轮筛选仍无可用代理；到此为止直接询问用户，
+              // 不要再套一层 maxRetries 重试（否则会把"3 次"放大成 3×N 次拉取）。
+              throw new Error('PROXY_FAILED: 代理池连续 3 次未获取到可用代理')
+            }
             if (!proxyData.proxy) {
               // No proxy available, try without
               if (attempt === maxRetries) {

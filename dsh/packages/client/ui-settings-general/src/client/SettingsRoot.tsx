@@ -13,9 +13,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  IconAgentPresetOutline16, IconApiOutline14, IconCloseOutline16, IconDataOutline16,
-  IconMcpToolsOutline16, IconPersonalizationOutline16, IconSettingsOutline16,
-  IconSkillsLibraryOutline16,
+  IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
+  IconLinkOutline16, IconMcpToolsOutline16, IconPersonalizationOutline16,
+  IconSettingsOutline16, IconSkillsLibraryOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SettingsRootComponentProps, SettingsSectionRow } from './shell-contract.ts'
 import css from './SettingsRoot.module.css'
@@ -27,7 +27,7 @@ function navIcon(id: string) {
   if (id === 'plugins') return <IconPersonalizationOutline16 className={css.navIcon} size={16} />
   if (id === 'mcp-tools') return <IconMcpToolsOutline16 className={css.navIcon} size={16} />
   if (id === 'skills-library') return <IconSkillsLibraryOutline16 className={css.navIcon} size={16} />
-  if (id === 'proxy-pool') return <IconApiOutline14 className={css.navIcon} size={16} />
+  if (id === 'proxy-pool') return <IconLinkOutline16 className={css.navIcon} size={16} />
   return <IconSettingsOutline16 className={css.navIcon} size={16} />
 }
 
