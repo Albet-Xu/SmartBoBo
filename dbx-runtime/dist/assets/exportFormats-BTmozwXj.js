@@ -1,0 +1,4 @@
+import{n as e}from"./rolldown-runtime-Dd_uD5pT.js";import{L as t}from"./api-BqkRQ8_T.js";var n=e({formatCsv:()=>r,formatSqlInsert:()=>a,formatTsv:()=>i});function r(e,t){let n=e=>`"${e.replace(/"/g,`""`)}"`;return`${e.map(n).join(`,`)}\n${t.map(e=>e.map(e=>e===null?``:n(String(e))).join(`,`)).join(`
+`)}`}function i(e,t){let n=e=>{let t=e===null?``:String(e);return t.includes(`	`)||t.includes(`
+`)||t.includes(`\r`)||t.includes(`"`)?`"${t.replace(/"/g,`""`)}"`:t};return`${e.map(n).join(`	`)}\n${t.map(e=>e.map(n).join(`	`)).join(`
+`)}`}function a(e){return t({...e,batchSize:1})}export{a as n,i as r,n as t};

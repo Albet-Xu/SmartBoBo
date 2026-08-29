@@ -315,6 +315,9 @@ importers:
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      dsh-history-tree:
+        specifier: workspace:^
+        version: link:../../packages/bundle/history-tree
       js-yaml:
         specifier: ^4.2.0
         version: 4.2.0
@@ -1289,6 +1292,8 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../core/session
+
+  packages/bundle/history-tree: {}
 
   packages/bundle/web-app:
     dependencies:

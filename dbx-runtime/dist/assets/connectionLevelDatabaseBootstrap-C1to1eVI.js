@@ -1,0 +1,1 @@
+import{bp as e}from"./api-BqkRQ8_T.js";import"./sqlStatementRanges-DU6ruVJx.js";var t=new Set([`selectdb`,`goldendb`]);function n(n){return n?e(n.db_type,n.driver_profile)?!0:!!n.driver_profile&&t.has(n.driver_profile.toLowerCase()):!1}function r(e){return n(e)}function i(e,t=!1){return!r(e)||!t}export{n,i as t};

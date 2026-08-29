@@ -1,6 +1,14 @@
 ---
 name: install-mcp-and-skills
 description: 从 GitHub 找到并安装 MCP 服务器或技能包到本地，登记到「MCP 工具」与「技能库」并完成校验。当用户要求安装某个 MCP 服务或某个技能时使用。
+triggers:
+  - 安装 mcp
+  - 安装技能
+  - 安装
+  - mcp
+  - 技能
+  - install
+  - skill
 disable-model-invocation: false
 user-invocable: false
 ---

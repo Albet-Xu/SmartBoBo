@@ -242,6 +242,9 @@ describe('FileSystemSkillProvider', () => {
       'name: rich-skill',
       'description: rich description',
       'whenToUse: For richer local parsing',
+      'triggers:',
+      '  - 安装 mcp',
+      '  - install skill',
       'disable-model-invocation: off',
       'user-invocable: YES',
       'metadata:',
@@ -292,10 +295,38 @@ describe('FileSystemSkillProvider', () => {
     })
     expect(await ctx.skills.get('rich-skill')).toMatchObject({
       whenToUse: 'For richer local parsing',
+      triggers: ['安装 mcp', 'install skill'],
       invocation: { modelInvocable: true, userInvocable: true },
       metadata: { owner: 'tests' },
     })
     expect(await ctx.skills.get('Bad_Name')).toBeUndefined()
+  })
+
+  it('parses valid triggers and omits malformed or empty trigger frontmatter', async () => {
+    const home = await tempDir('skill-triggers')
+    const root = join(home, '.dsh/skills')
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'gated.md'), [
+      '---',
+      'name: gated',
+      'description: gated description',
+      'triggers:',
+      '  - 安装 mcp',
+      '  - 技能',
+      '---',
+      '',
+      'Gated body.',
+    ].join('\n'))
+    await writeFile(join(root, 'not-a-list.md'), '---\nname: not-a-list\ndescription: d\ntriggers: mcp\n---\n\nBody.')
+    await writeFile(join(root, 'empty-list.md'), '---\nname: empty-list\ndescription: d\ntriggers: []\n---\n\nBody.')
+    await writeFile(join(root, 'empty-item.md'), '---\nname: empty-item\ndescription: d\ntriggers:\n  - ""\n  - mcp\n---\n\nBody.')
+
+    const ctx = await setupLocal(home)
+    expect(await ctx.skills.get('gated')).toMatchObject({ triggers: ['安装 mcp', '技能'] })
+    expect(await ctx.skills.get('not-a-list')).toMatchObject({ invocation: { modelInvocable: true, userInvocable: true } })
+    expect((await ctx.skills.get('not-a-list'))?.triggers).toBeUndefined()
+    expect((await ctx.skills.get('empty-list'))?.triggers).toBeUndefined()
+    expect((await ctx.skills.get('empty-item'))?.triggers).toEqual(['mcp'])
   })
 
   it('accepts the documented boolean spellings for invocation frontmatter', async () => {

@@ -107,6 +107,7 @@ interface ParsedSkill {
   name: string
   description: string
   whenToUse?: string
+  triggers?: string[]
   invocation: SkillInvocationPolicy
   metadata?: Record<string, unknown>
   content: string
@@ -211,6 +212,7 @@ export class FileSystemSkillProvider implements SkillProvider {
       name: parsed.name,
       description: parsed.description,
       ...parsed.whenToUse !== undefined ? { whenToUse: parsed.whenToUse } : {},
+      ...parsed.triggers !== undefined ? { triggers: parsed.triggers } : {},
       invocation: parsed.invocation,
       source: candidate.source,
       provider: this.name,
@@ -733,6 +735,7 @@ async function discoverRoot(root: SkillRoot, ctx: Context, provider: string): Pr
       name: parsed.name,
       description: parsed.description,
       ...parsed.whenToUse !== undefined ? { whenToUse: parsed.whenToUse } : {},
+      ...parsed.triggers !== undefined ? { triggers: parsed.triggers } : {},
       invocation: parsed.invocation,
       provider,
       source: root.source,
@@ -828,6 +831,7 @@ async function parseSkillFile(path: string, ctx: Context, signal?: AbortSignal, 
     name,
     description,
     ...optionalString(parsed.data, 'whenToUse'),
+    ...optionalStringList(parsed.data, 'triggers'),
     invocation,
     ...optionalMetadata(parsed.data),
     content: parsed.body.trim(),
@@ -987,6 +991,13 @@ function stringField(data: Record<string, unknown>, key: string): string | undef
 function optionalString(data: Record<string, unknown>, key: string): { [K in typeof key]?: string } {
   const value = data[key]
   return typeof value === 'string' && value.length > 0 ? { [key]: value } : {}
+}
+
+function optionalStringList(data: Record<string, unknown>, key: string): { [K in typeof key]?: string[] } {
+  const value = data[key]
+  if (!Array.isArray(value)) return {}
+  const items = value.filter(item => typeof item === 'string' && item.length > 0)
+  return items.length > 0 ? { [key]: items } : {}
 }
 
 function parseInvocationPolicy(data: Record<string, unknown>): SkillInvocationPolicy {

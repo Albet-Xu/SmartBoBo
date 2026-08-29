@@ -1,0 +1,60 @@
+{
+  "name": "dsh-history-tree",
+  "version": "1.0.3",
+  "description": "Codex-style conversation turn timeline tree and history overview on the left border of chat messages in DSH Web UI",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "cordis",
+    "plugin",
+    "history",
+    "tree",
+    "codex",
+    "timeline"
+  ],
+  "author": "DSH Harness Agent",
+  "license": "MIT",
+  "dependencies": {},
+  "files": [
+    "lib",
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/z953218350/dsh-history-tree.git"
+  },
+  "homepage": "https://github.com/z953218350/dsh-history-tree",
+  "bugs": {
+    "url": "https://github.com/z953218350/dsh-history-tree/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

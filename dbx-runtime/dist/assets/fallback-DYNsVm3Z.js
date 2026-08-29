@@ -1,0 +1,1 @@
+import{t as e}from"./en-0c1oUhci.js";function t(e){return e&&typeof e==`object`&&!Array.isArray(e)?n(e,{}):e}function n(e,r){let i={};for(let[n,r]of Object.entries(e))i[n]=t(r);for(let[e,t]of Object.entries(r)){let r=i[e];i[e]=r&&t&&typeof r==`object`&&typeof t==`object`&&!Array.isArray(r)&&!Array.isArray(t)?n(r,t):t}return i}function r(t){return n(e,t)}export{r as t};

@@ -9,7 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type Message } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import {
   escapeText,
@@ -138,6 +138,14 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (!isModelInvocable(summary)) {
         throw new Error(`skill "${args.name}" is not available for model invocation`)
       }
+      // Trigger gate is defense in depth behind the catalog: by the time the
+      // model names a skill it has seen the catalog for this request, whose
+      // entry was gated on the same trigger text (the latest direct user
+      // message on the model-visible surface). This second check closes the
+      // path for a model that renames a gated skill from an earlier catalog.
+      if (!triggerMatches(currentRequestText(exec.agent), summary.triggers)) {
+        throw new Error(`skill "${args.name}" is gated and does not match the current request`)
+      }
       const skill = await ctx.skills.get(args.name, lookup)
       if (!skill) {
         throw new Error(`skill "${args.name}" is unknown or no longer available`)
@@ -211,7 +219,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   // scope, so a plugin mounted inside an agent preset registers for that agent
   // alone and an unscoped lookup correctly finds nothing.
   ctx.on('agent/pre-step', async (
-    { agent, signal },
+    { agent, messages, signal },
     next,
   ): Promise<PreStepDecision> => {
     const decision = await next()
@@ -223,7 +231,12 @@ export function apply(ctx: Context, config: Config = {}): void {
       : { skills: [], complete: true }
     signal.throwIfAborted()
     if (!snapshot.complete) return decision
-    const skills = snapshot.skills.filter(isModelInvocable)
+    // Skills that declare triggers only enter the catalog for requests whose
+    // text matches a trigger; everything else stays listed as before. The
+    // digest machinery republishes a replacement catalog when the visible set
+    // changes with the topic.
+    const userText = activeUserText(messages)
+    const skills = snapshot.skills.filter(skill => isModelInvocable(skill) && triggerMatches(userText, skill.triggers))
     const entries = catalogSourceEntries(skills, catalogDescriptionMaxLength)
     const digest = digestCatalogEntries(entries)
     const history = catalogHistory(agent)
@@ -264,6 +277,7 @@ function renderCatalogMessage(entries: SkillCatalogSource['entries']): UserMessa
         '</available_skills>',
         '',
         "If the user names a skill, or the task clearly matches a skill's description, call the `skill` tool with the exact skill name before taking task actions. Load all applicable skills, then follow their full instructions. This catalog contains summaries only; do not infer or follow a skill's instructions until it has been loaded.",
+        'Some skills are trigger-gated: they appear here only when your current request matches their trigger phrase. Do not call the `skill` tool for a skill that is not listed in this catalog.',
         'A user may also invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool again for that skill.',
         '</system-reminder>',
       ].join('\n'),
@@ -284,6 +298,7 @@ function renderCatalogUpdate(entries: SkillCatalogSource['entries']): UserMessag
     ]
     : [
       'Use only names in this replacement catalog. If the user names a listed skill, or the task clearly matches its description, call the `skill` tool with the exact name before acting.',
+      'Some skills are trigger-gated: they appear in this catalog only when your current request matches their trigger phrase. Do not call the `skill` tool for a skill that is not listed in this catalog.',
       'A user may also invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool again for that skill.',
     ]
   return createUserMessage({
@@ -397,6 +412,73 @@ function assertPositiveInteger(name: string, value: number, minimum = 1): void {
   if (!Number.isInteger(value) || value < minimum) {
     throw new Error(`tool-skill: ${name} must be an integer greater than or equal to ${minimum}`)
   }
+}
+
+/**
+ * Collapse whitespace and lowercase a text fragment so trigger matching is
+ * case- and spacing-insensitive across the message text and the trigger list.
+ * @param value - raw fragment to normalize.
+ * @returns the normalized, trimmed fragment.
+ */
+function normalizeText(value: string): string {
+  return value.replaceAll(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/**
+ * Whether a skill's trigger gate admits the current request text. Skills with
+ * no (or empty) `triggers` are always admitted; otherwise at least one trigger
+ * must appear as a substring of the normalized text.
+ * @param userText - the normalized current request text, or raw text to normalize here.
+ * @param triggers - the skill's declared trigger phrases, or none for an ungated skill.
+ * @returns whether the request may see and load the skill.
+ */
+function triggerMatches(userText: string, triggers: readonly string[] | undefined): boolean {
+  if (triggers === undefined || triggers.length === 0) return true
+  const haystack = normalizeText(userText)
+  return triggers.some((trigger) => {
+    const needle = normalizeText(trigger)
+    return needle !== '' && haystack.includes(needle)
+  })
+}
+
+/**
+ * Concatenated, normalized text of the direct user messages in a request batch
+ * (injected context and catalog text carry other source kinds and are skipped).
+ * @param messages - the step's claimed message batch.
+ * @returns the normalized user text used to evaluate trigger gates.
+ */
+function activeUserText(messages: readonly UserMessage[]): string {
+  const blocks: string[] = []
+  for (const message of messages) {
+    if ((message.source as { kind?: unknown }).kind !== 'user') continue
+    for (const block of message.content) {
+      if (block.type !== 'text') continue
+      blocks.push(block.text)
+    }
+  }
+  return normalizeText(blocks.join(' '))
+}
+
+/**
+ * Normalized text of the latest direct user message on the model-visible
+ * surface, used by the loader to recheck a trigger gate. An absent agent
+ * yields empty text (which admits nothing), failing the gate closed.
+ * @param agent - the calling agent, or none.
+ * @returns the normalized latest user text, or an empty string when unavailable.
+ */
+function currentRequestText(agent: Agent | undefined): string {
+  if (agent === undefined) return ''
+  const session = (agent as { session?: { deriveMessages?: () => readonly Message[] } }).session
+  if (typeof session?.deriveMessages !== 'function') return ''
+  for (const message of [...session.deriveMessages()].reverse()) {
+    if ((message.source as { kind?: unknown }).kind !== 'user') continue
+    for (const block of message.content) {
+      if (block.type !== 'text') continue
+      const text = normalizeText(block.text)
+      if (text !== '') return text
+    }
+  }
+  return ''
 }
 
 /**

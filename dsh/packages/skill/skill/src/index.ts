@@ -60,6 +60,14 @@ export interface SkillSummary {
   readonly description: string
   /** Optional extra routing guidance. */
   readonly whenToUse?: string
+  /**
+   * Optional trigger phrases gating model-facing advertisement. When present
+   * and non-empty, the skill enters the model catalog (`tool-skill`) only for
+   * requests whose normalized text contains at least one phrase; invocation
+   * policy otherwise. Consumers evaluate the gate at their boundary; the
+   * registry stays invocation-neutral.
+   */
+  readonly triggers?: readonly string[]
   /** Resolved model and user invocation controls. */
   readonly invocation: SkillInvocationPolicy
   /** Discovery source that produced this winning skill. */
@@ -694,6 +702,7 @@ function runtimeCandidate(skill: SkillDefinition): SkillCandidate {
     name: skill.name,
     description: skill.description,
     ...skill.whenToUse !== undefined ? { whenToUse: skill.whenToUse } : {},
+    ...skill.triggers !== undefined ? { triggers: skill.triggers } : {},
     invocation: skill.invocation,
     source: skill.source,
     provider: skill.provider,
@@ -721,6 +730,9 @@ function validateCandidate(candidate: SkillCandidate, providerName: string): voi
   validateInvocation(candidate.invocation, `skill provider "${providerName}" returned skill "${candidate.name}"`)
   if (candidate.whenToUse !== undefined && typeof candidate.whenToUse !== 'string') {
     throw new TypeError(`skill provider "${providerName}" returned skill "${candidate.name}" with a non-string whenToUse`)
+  }
+  if (candidate.triggers !== undefined && !isTriggerList(candidate.triggers)) {
+    throw new TypeError(`skill provider "${providerName}" returned skill "${candidate.name}" with a non-string-array triggers`)
   }
   if (typeof candidate.source !== 'string') {
     throw new TypeError(`skill provider "${providerName}" returned skill "${candidate.name}" with a non-string source`)
@@ -750,6 +762,7 @@ function validateDefinition(skill: SkillDefinition): void {
   const name = skill.name
   const description = skill.description
   const whenToUse = skill.whenToUse
+  const triggers = skill.triggers
   const invocation = skill.invocation
   const source = skill.source
   const provider = skill.provider
@@ -761,6 +774,7 @@ function validateDefinition(skill: SkillDefinition): void {
   if (description.length === 0) throw new Error(`loaded skill "${name}" requires a description`)
   validateInvocation(invocation, `loaded skill "${name}"`)
   if (whenToUse !== undefined && typeof whenToUse !== 'string') throw new TypeError(`loaded skill "${name}" whenToUse must be a string`)
+  if (triggers !== undefined && !isTriggerList(triggers)) throw new TypeError(`loaded skill "${name}" triggers must be a non-empty string array`)
   if (typeof source !== 'string') throw new TypeError(`loaded skill "${name}" source must be a string`)
   if (typeof provider !== 'string') throw new TypeError(`loaded skill "${name}" provider must be a string`)
   if (typeof content !== 'string') throw new TypeError(`loaded skill "${name}" content must be a string`)
@@ -768,16 +782,21 @@ function validateDefinition(skill: SkillDefinition): void {
 }
 
 function toSummary(skill: SkillDefinition | SkillCandidate): SkillSummary {
-  const { name, description, whenToUse, invocation, source, provider, resourceBase } = skill
+  const { name, description, whenToUse, triggers, invocation, source, provider, resourceBase } = skill
   return {
     name,
     description,
     ...whenToUse !== undefined ? { whenToUse } : {},
+    ...triggers !== undefined ? { triggers } : {},
     invocation,
     source,
     provider,
     ...resourceBase !== undefined ? { resourceBase } : {},
   }
+}
+
+function isTriggerList(value: readonly string[]): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every(item => typeof item === 'string' && item.length > 0)
 }
 
 function validateInvocation(invocation: unknown, subject: string): void {

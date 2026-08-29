@@ -74,6 +74,18 @@ function sessionAgent(session: Session, id = 'tool-skill-agent'): Agent {
   }
 }
 
+function userTextAgent(text: string): Agent {
+  return {
+    session: {
+      header: { cwd: '/workspace' },
+      deriveMessages: () => [createUserMessage({
+        content: [{ type: 'text', text }],
+        source: { kind: 'user' },
+      })],
+    },
+  } as never
+}
+
 function openMessageTurn(session: Session, turn = 1): void {
   session.append('turn/start', { turn })
   session.append('user/message', createUserMessage({
@@ -127,6 +139,13 @@ function catalogContent(entries: string[]): Message['content'] {
     type: 'text',
     text: ['<system-reminder>', '<available_skills>', ...entries, '</available_skills>', '</system-reminder>'].join('\n'),
   }]
+}
+
+function catalogEntryNames(decision: PreStepDecision): string[] {
+  if (decision.kind !== 'enter') return []
+  const catalog = decision.messages.find(message => (message.source as { kind?: unknown }).kind === 'skill-catalog')
+  const entries = (catalog as { source?: { entries?: readonly { name?: unknown }[] } } | undefined)?.source?.entries ?? []
+  return entries.flatMap(entry => typeof entry.name === 'string' ? [entry.name] : [])
 }
 
 async function composePrefix(ctx: Context, cwd: string, signal = new AbortController().signal): Promise<Message[]> {
@@ -287,6 +306,7 @@ describe('dsh-tool-skill', () => {
             '</available_skills>',
             '',
             "If the user names a skill, or the task clearly matches a skill's description, call the `skill` tool with the exact skill name before taking task actions. Load all applicable skills, then follow their full instructions. This catalog contains summaries only; do not infer or follow a skill's instructions until it has been loaded.",
+            'Some skills are trigger-gated: they appear here only when your current request matches their trigger phrase. Do not call the `skill` tool for a skill that is not listed in this catalog.',
             'A user may also invoke a skill directly; its <skill_content> block then appears in this conversation. Follow it, and do not call the `skill` tool again for that skill.',
             '</system-reminder>',
           ].join('\n'),
@@ -300,6 +320,32 @@ describe('dsh-tool-skill', () => {
     expect(rendered).not.toContain('Secret body')
     expect(rendered).not.toContain('user-only-skill')
     expect(renderPrompt(await ctx.systemPrompt.assemble({ agent: agentForCwd('/workspace') }))).not.toContain('<available_skills>')
+  })
+
+  it('gates trigger-declaring skills in and out of the catalog by the current request', async () => {
+    const home = await tempDir('tool-trigger-catalog')
+    const ctx = await setup(home)
+    ctx.skills.register({ name: 'always-skill', description: 'Always', source: 'runtime', content: 'Always.' })
+    ctx.skills.register({
+      name: 'gated-skill',
+      description: 'Gated',
+      source: 'runtime',
+      triggers: ['安装 mcp', '技能'],
+      content: 'Gated.',
+    })
+    const agent = agentForCwd('/workspace')
+
+    const offTopic = await proposeStep(ctx, agent, [createUserMessage({
+      content: [{ type: 'text', text: '请采集这个网页的全部内容' }],
+      source: { kind: 'user' },
+    })])
+    expect(catalogEntryNames(offTopic)).toEqual(['always-skill'])
+
+    const onTopic = await proposeStep(ctx, agent, [createUserMessage({
+      content: [{ type: 'text', text: '帮我安装 MCP 服务器' }],
+      source: { kind: 'user' },
+    })])
+    expect(catalogEntryNames(onTopic)).toContain('gated-skill')
   })
 
   it('does not inject a catalog when no model-invocable skills are available', async () => {
@@ -796,6 +842,42 @@ describe('dsh-tool-skill', () => {
       '</skill_content>',
     ].join('\n'))
     expect(block.text).not.toContain('# Skill:')
+  })
+
+  it('gates the loader behind the current request for trigger-declaring skills', async () => {
+    const home = await tempDir('tool-trigger-load')
+    const ctx = await setup(home)
+    ctx.skills.register({
+      name: 'gated-skill',
+      description: 'Gated',
+      source: 'runtime',
+      triggers: ['安装 mcp'],
+      content: 'Gated body.',
+    })
+
+    const miss = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: CallId('c-gate-miss'),
+      name: 'skill',
+      arguments: { name: 'gated-skill' },
+      agent: userTextAgent('请采集这个网页'),
+    })
+    expect(miss.isError).toBe(true)
+    const missBlock = miss.content[0]
+    if (missBlock?.type !== 'text') throw new Error('expected text tool result')
+    expect(missBlock.text).toContain('is gated and does not match the current request')
+
+    const hit = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: CallId('c-gate-hit'),
+      name: 'skill',
+      arguments: { name: 'gated-skill' },
+      agent: userTextAgent('帮我安装 mcp 服务器并配置技能'),
+    })
+    expect(hit.isError).toBe(false)
+    const hitBlock = hit.content[0]
+    if (hitBlock?.type !== 'text') throw new Error('expected text tool result')
+    expect(hitBlock.text).toContain('<skill_instructions>\nGated body.')
   })
 
   it('renders provider-managed resource hints for non-local skills', async () => {

@@ -188,6 +188,22 @@ describe('SkillRegistry registry', () => {
     expect((await ctx.skills.get('both'))?.invocation).toEqual({ modelInvocable: true, userInvocable: true })
   })
 
+  it('carries triggers through the runtime catalog summary and the loaded definition', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    ctx.skills.register({
+      name: 'gated',
+      description: 'Gated',
+      source: 'runtime',
+      triggers: ['安装 mcp', 'install skill'],
+      content: 'Gated body.',
+    })
+
+    const summary = (await ctx.skills.list()).find(skill => skill.name === 'gated')
+    expect(summary?.triggers).toEqual(['安装 mcp', 'install skill'])
+    expect((await ctx.skills.get('gated'))?.triggers).toEqual(['安装 mcp', 'install skill'])
+  })
+
   it('validates parsed candidate fields', async () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
@@ -234,6 +250,10 @@ describe('SkillRegistry registry', () => {
     const cases: { patch: Partial<SkillCandidate>; expected: string }[] = [
       { patch: { name: { value: 'candidate' } as unknown as string }, expected: 'non-string skill name' },
       { patch: { whenToUse: 1 as unknown as string }, expected: 'non-string whenToUse' },
+      { patch: { triggers: 1 as unknown as string[] }, expected: 'non-string-array triggers' },
+      { patch: { triggers: ['ok', 2] as unknown as string[] }, expected: 'non-string-array triggers' },
+      { patch: { triggers: ['ok', ''] }, expected: 'non-string-array triggers' },
+      { patch: { triggers: [] }, expected: 'non-string-array triggers' },
       { patch: { source: { value: 'source' } as unknown as string }, expected: 'non-string source' },
       { patch: { rank: '1' as unknown as number }, expected: 'invalid rank' },
       { patch: { provider: { value: 'provider' } as unknown as string }, expected: 'non-string provider' },
@@ -520,6 +540,9 @@ describe('SkillRegistry registry', () => {
         expected: 'invocation.userInvocable',
       },
       { patch: { whenToUse: 1 as unknown as string }, expected: 'whenToUse must be a string' },
+      { patch: { triggers: 1 as unknown as string[] }, expected: 'triggers must be a non-empty string array' },
+      { patch: { triggers: ['ok', ''] }, expected: 'triggers must be a non-empty string array' },
+      { patch: { triggers: [] }, expected: 'triggers must be a non-empty string array' },
       { patch: { source: { value: 'source' } as unknown as string }, expected: 'source must be a string' },
       { patch: { provider: { value: 'provider' } as unknown as string }, expected: 'provider must be a string' },
       { patch: { content: { value: 'content' } as unknown as string }, expected: 'content must be a string' },
