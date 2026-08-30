@@ -1,29 +1,28 @@
-"""用 Scrapling 抓取单页，按 --format 转目标格式存到本地（dsh 的 crawl_fetch 工具经子进程调用）。
+# -*- coding: utf-8 -*-
+"""用长驻 Camoufox 服务 + Scrapling 解析方式抓取单页（dsh 的 crawl_fetch 工具经子进程调用）。
 
-真实 API 核对（Scrapling v0.4.x）：
-- StealthyFetcher.fetch 是 classmethod，支持 headless / network_idle。
-- 返回的 Response 继承 Selector，没有 ``css_first`` —— 取首个匹配用 ``page.css(sel).first``。
-- 没有 ``save_html`` —— 保存 HTML 需自己写文件：``page.html_content``（inner HTML）。
+架构收敛后（见 tool-acquisition 采集引擎统一到 camoufox 的改造）：
+本脚本**不再自己拉起 patchright/Chromium**，而是连接 dsh 插件常驻的 browser_server
+（--server 127.0.0.1:端口）拿到**渲染后的完整文档**，再按 --format 派生落盘
+html / md（默认）/ skeleton，一次抓取产出多文件，不生成 .json。
 
-行为：按 `--format` 逗号分隔的多格式派生并落盘（同一份渲染 HTML 分别转换）：
-html / md（默认）/ skeleton，一次抓取可产出多个文件，**不生成 .json**；
-仅通过 stdout 打一行单行 JSON `{"savedTo","status","preview","title","format","outputs"}` 供插件解析。
+Scrapling 的 StealthyFetcher 自带 patchright 抗检测栈，与 camoufox(Firefox) 内核不兼容，
+无法把底层浏览器直接换成 camoufox；因此引擎语义收敛为"解析/输出选项"，与另两家共用同一套
+lxml selector 切片与转换落盘逻辑。selector 命中则只转换该子树。与 run_camoufox.py /
+run_crawl4ai.py 共用 crawl_common。
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 
-from scrapling.fetchers import StealthyFetcher
-
 # 确保可 import 同目录共享模块（脚本可能被任意 cwd 调用）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from crawl_common import (
     DEFAULT_FORMAT,
-    html_to_format,
-    parse_formats,
-    resolve_outputs,
-    write_output,
+    ServerUnreachable,
+    build_crawl_result,
+    crawl_via_server,
 )
 
 
@@ -37,54 +36,34 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--url', required=True)
     ap.add_argument('--out', required=True)
-    ap.add_argument('--selector', default=None)
+    ap.add_argument('--selector', default=None,
+                    help='CSS selector，命中则只转换该子树，否则转换整页完整文档')
     ap.add_argument('--format', default=DEFAULT_FORMAT,
                     help='输出格式，逗号分隔可多选，如 html,md,skeleton（默认 md）')
-    ap.add_argument('--auto-name', action='store_true')
-    ap.add_argument('--proxy', default=None,
-                    help='代理地址，如 http://ip:port')
+    ap.add_argument('--auto-name', action='store_true',
+                    help='用 站点_标题_时间戳.<各格式扩展名> 命名')
+    ap.add_argument('--server', required=True,
+                    help='长驻浏览器服务地址，如 127.0.0.1:端口')
     a = ap.parse_args()
+
     try:
-        # Scrapling StealthyFetcher 不直接支持 proxy 参数，这里仅作为标记
-        # 实际代理需要通过环境变量或浏览器配置实现
-        page = StealthyFetcher.fetch(a.url, headless=True, network_idle=True)
-
-        if a.selector:
-            node = page.css(a.selector).first
-            text = node.text if node is not None else ""
-        else:
-            text = page.get_all_text()
-
-        title = page.css('title').first.text if page.css('title').first is not None else 'untitled'
-
-        # 指定了 selector 时，只转换命中部分（否则转换整页渲染 HTML）
-        html_chunk = page.html_content
-        if a.selector:
-            node = page.css(a.selector).first
-            if node is not None:
-                html_chunk = node.html
-
-        # 一次抓取，按请求的多格式分别派生落盘
-        formats = parse_formats(a.format)
-        out_map = resolve_outputs(a.out, a.url, title, formats, a.auto_name)
-        outputs = []
-        for fmt in formats:
-            content = html_to_format(html_chunk, fmt)
-            write_output(out_map[fmt], content)
-            outputs.append({'format': fmt, 'path': out_map[fmt]})
-
-        result = {
-            'savedTo': outputs[0]['path'],
-            'status': page.status,
-            'preview': (text or '')[:2000],
-            'title': title,
-            'format': a.format,
-            'outputs': outputs,
-        }
-    except Exception as e:
-        result = {'status': 0, 'savedTo': '', 'preview': f'ERROR: {e}',
+        rendered = crawl_via_server(a.server, a.url)
+    except ServerUnreachable:
+        result = {'savedTo': '', 'status': 0, 'preview': f'ERROR: 浏览器服务不可达({a.server})',
                   'title': '', 'format': a.format, 'outputs': []}
-    print(json.dumps(result, ensure_ascii=False))  # 仅 stdout，不落盘 JSON
+        print(json.dumps(result, ensure_ascii=False))
+        sys.exit(2)
+
+    if rendered.get('error'):
+        result = {'savedTo': '', 'status': 0, 'preview': rendered['error'],
+                  'title': '', 'format': a.format, 'outputs': []}
+    else:
+        result = build_crawl_result(
+            rendered.get('html') or '', rendered.get('title') or 'untitled',
+            rendered.get('status') or 0, rendered.get('partial') or False,
+            a.url, a.out, a.selector, a.auto_name, a.format,
+        )
+    print(json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == '__main__':

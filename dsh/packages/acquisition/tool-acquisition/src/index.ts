@@ -1,14 +1,17 @@
 /**
  * 采集工具插件 `tool-acquisition`：智能体请求"采集某个网页"时调用。
  *
- * 实现方式（本阶段：Node 编排 + Python 采集双栈）：
- * - 通过 `child_process` 调用本地 Python 脚本（`BoBo/scripts/run_camoufox.py`
- *   （默认）/run_scrapling.py/run_crawl4ai.py），脚本真正抓取网页。
- * - 脚本按 `outputFormat`（支持逗号分隔多格式）把渲染后的内容转换为一个或多个
- *   目标格式（html / md / skeleton）落盘到本地（默认以 站点_标题_时间戳.<格式扩展名>
- *   命名，不生成 .json）；同时把一行单行 JSON 打到 stdout，这里解析后返回给智能体
- *   （`savedTo`/`status`/`preview`/`format`/`outputs`，仅作告知，AI 不读内容本身）。
- * - 一次抓取可产出多个格式：以同一份渲染 HTML 为素材，分别派生 html / md / skeleton。
+ * 实现方式（Node 编排 + Python 采集，浏览器统一为长驻 Camoufox）：
+ * - 会话内由本插件按需拉起/常驻 `scripts/browser_server.py`（一个持有 camoufox 的
+ *   长驻浏览器服务，排队复用同一 context），智能体/会话关闭（dispose）时关闭它；
+ *   服务异常退出后由下一次采集自动重启。代理在服务（每次）启动时注入一次。
+ * - 每次采集通过 `child_process` 调用 `BoBo/scripts/run_<engine>.py`
+ *   （camoufox 默认 /scrapling/crawl4ai），脚本作为瘦客户端向浏览器服务取"渲染后的
+ *   完整文档"，再按 `outputFormat`（支持逗号分隔多格式）派生 html / md / skeleton 落盘
+ *   （默认以 站点_标题_时间戳.<格式扩展名> 命名，不生成 .json），并把一行单行 JSON
+ *   打到 stdout，这里解析后返回给智能体（`savedTo`/`status`/`preview`/`format`/`outputs`）。
+ * - 三引擎共用同一浏览器与同一套 selector 切片 + 格式转换 + 落盘逻辑（crawl_common.py），
+ *   engine 仅作为解析/输出方式选项保留。
  * - 默认保存位置为当前工作区的 data 文件夹，除非用户明确指定其他位置。
  *
  * 装配方式见 `BoBo/patch/`（`- insert:` 注入 + `- id: webserver` 固定 7070 端口）。
@@ -19,7 +22,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { execFile } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import { dirname, join, resolve } from 'node:path'
 import { existsSync, mkdirSync } from 'node:fs'
@@ -132,6 +135,84 @@ function getDataDir(config: Config, workspacePath?: string): string {
 }
 
 export function apply(ctx: Context, config: Config): void {
+  // ── 长驻 Camoufox 浏览器服务（browser_server.py）生命周期管理 ────────────
+  // 采集不再由每次子进程各自拉起浏览器，而是向本服务排队取"渲染后的完整文档"。
+  // 服务随插件/会话 teardown 关闭（dispose）；异常退出后由下一次采集自动重启。
+  let serverChild: ChildProcess | null = null
+  let serverPort: number | null = null
+  let serverStarting: Promise<number> | null = null
+
+  const killServer = (): void => {
+    const child = serverChild
+    serverChild = null
+    serverPort = null
+    serverStarting = null
+    if (child && child.exitCode === null && !child.killed) {
+      try {
+        child.kill()
+      } catch {
+        /* 已退出则忽略 */
+      }
+      // Windows 下 kill 只终止 python 直接子进程，需递归清掉 camoufox firefox 子进程避免残留
+      if (process.platform === 'win32' && child.pid) {
+        execFileAsync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }).catch(() => {})
+      }
+    }
+  }
+
+  // 确保长驻浏览器服务在跑；未启动或已退出则拉起，返回连接端点端口。
+  const ensureServer = async (pythonBin: string, scriptsDir: string, proxy?: string): Promise<number> => {
+    if (serverChild && serverChild.exitCode === null && serverPort != null) return serverPort
+    if (serverStarting) return serverStarting
+    serverStarting = (async () => {
+      const child = spawn(pythonBin, [
+        join(scriptsDir, 'browser_server.py'),
+        ...(proxy ? ['--proxy', proxy] : []),
+      ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      serverChild = child
+      const port = await new Promise<number>((resolve, reject) => {
+        let buf = ''
+        let settled = false
+        const timer = setTimeout(() => {
+          if (!settled) { settled = true; reject(new Error('浏览器服务启动超时（60s）')) }
+        }, 60_000)
+        const onData = (chunk: Buffer | string): void => {
+          buf += chunk.toString()
+          const m = buf.match(/READY (\d+)/)
+          if (m && !settled) {
+            settled = true
+            clearTimeout(timer)
+            child.stdout?.off('data', onData)
+            resolve(Number(m[1]))
+          }
+        }
+        child.stdout?.on('data', onData)
+        child.stderr?.on('data', () => { /* 仅排空，不拼到 READY 解析，避免错序 */ })
+        child.once('exit', (code) => {
+          if (!settled) { settled = true; clearTimeout(timer); reject(new Error(`浏览器服务异常退出(code=${code})`)) }
+        })
+      })
+      serverPort = port
+      child.on('exit', () => {
+        if (serverChild === child) { serverChild = null; serverPort = null }
+        serverStarting = null
+      })
+      return port
+    })()
+    try {
+      return await serverStarting
+    } catch (err) {
+      serverStarting = null
+      serverChild = null
+      serverPort = null
+      throw err
+    }
+  }
+
+  // 插件/会话 teardown（fiber 释放）时关闭浏览器：智能体关闭 → 会话结束 → 关闭浏览器。
+  // 用 ctx.effect 注册 disposer（dsh 惯例，替代未入事件表的 'dispose' 事件）。
+  ctx.effect(() => killServer)
+
   ctx.tools.register(defineTool({
     name: 'crawl_fetch',
     description:
@@ -235,13 +316,12 @@ export function apply(ctx: Context, config: Config): void {
       const outBase = args.outFile ?? 'crawl_auto'
 
       // ── Proxy support ──────────────────────────────────────────────────
-      // Check if proxy mode is enabled for this session
+      // 代理统一由长驻 browser_server 在服务启动时承载一次（引擎脚本不再各自带 proxy）。
       const agent = exec.agent
       const proxyEnabled = agent ? foldProxyEnabled(agent.session.events) : false
       let proxyConfig: ProxyPoolConfig | null = null
-
       if (proxyEnabled) {
-        // Try to read proxy pool config from settings
+        // Read proxy pool config from settings
         try {
           const settingsApi = (ctx as any).get?.('settings')
           if (settingsApi?.describe) {
@@ -256,20 +336,9 @@ export function apply(ctx: Context, config: Config): void {
         }
       }
 
-      // Build script args
-      const scriptBaseArgs = [
-        join(scriptsDir, `run_${engine}.py`),
-        '--url', args.url,
-        '--out', join(dataDir, outBase),
-        '--format', format,
-      ]
-      if (!args.outFile) scriptBaseArgs.push('--auto-name')
-      if (args.selector) scriptBaseArgs.push('--selector', args.selector)
-
-      // If proxy is enabled and configured, attempt with proxy (with retry)
-      const maxRetries = proxyConfig?.maxRetries ?? 3
+      // 会话启用代理且配置有可用源时，取一个代理地址注入到浏览器服务（每次（重）启动取一次）。
+      let proxyAddr: string | undefined
       if (proxyEnabled && proxyConfig?.enabled !== false && proxyConfig?.sources?.length) {
-        // Get a proxy via proxy_pool.py helper
         const getProxyArgs = [
           join(scriptsDir, 'proxy_pool.py'),
           '--action', 'get',
@@ -280,107 +349,55 @@ export function apply(ctx: Context, config: Config): void {
           }),
           '--target-url', args.url,
         ]
-
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          try {
-            // Get a proxy from the pool
-            const proxyRes = await execFileAsync(pythonBin, getProxyArgs,
-              { timeout: 15000, encoding: 'utf-8', windowsHide: true })
-            const proxyData = JSON.parse(proxyRes.stdout)
-            if (proxyData?.failed === true) {
-              // 代理池内部已跑满 3 轮筛选仍无可用代理；到此为止直接询问用户，
-              // 不要再套一层 maxRetries 重试（否则会把"3 次"放大成 3×N 次拉取）。
-              throw new Error('PROXY_FAILED: 代理池连续 3 次未获取到可用代理')
-            }
-            if (!proxyData.proxy) {
-              // No proxy available, try without
-              if (attempt === maxRetries) {
-                // Last attempt, ask user
-                const msg = '代理池无可用代理，是否走本地网络进行访问网页？'
-                throw new Error(`PROXY_FAILED: ${msg}`)
-              }
-              continue
-            }
-
-            const proxyArg = proxyData.proxy
-            const scriptArgs = [...scriptBaseArgs, '--proxy', proxyArg]
-
-            try {
-              const res = await execFileAsync(pythonBin, scriptArgs,
-                { timeout: config.timeoutMs ?? 180_000, encoding: 'utf-8', windowsHide: true })
-              const stdout = res.stdout
-              let result: any = {}
-              try { result = JSON.parse(stdout) } catch { /* ignore */ }
-
-              // Check if result indicates success (status != 0 usually means HTTP status)
-              if (result.status && result.status !== 0) {
-                // Mark proxy as failed for next attempt
-                await execFileAsync(pythonBin, [
-                  join(scriptsDir, 'proxy_pool.py'),
-                  '--action', 'fail',
-                  '--proxy', proxyArg,
-                ], { timeout: 5000, encoding: 'utf-8', windowsHide: true }).catch(() => {})
-
-                if (attempt < maxRetries) continue
-                // Last attempt, return result (may be partial success)
-                const outputs = Array.isArray(result.outputs)
-                  ? result.outputs.map((o: any) => ({ format: String(o?.format ?? ''), path: String(o?.path ?? '') }))
-                  : []
-                return {
-                  savedTo: String(result.savedTo ?? ''),
-                  status: result.status ?? 0,
-                  contentPreview: String(result.preview ?? '').slice(0, 2000),
-                  format: String(result.format ?? format),
-                  outputs,
-                }
-              }
-
-              // Success
-              const outputs = Array.isArray(result.outputs)
-                ? result.outputs.map((o: any) => ({ format: String(o?.format ?? ''), path: String(o?.path ?? '') }))
-                : []
-              return {
-                savedTo: String(result.savedTo ?? ''),
-                status: result.status ?? 0,
-                contentPreview: String(result.preview ?? '').slice(0, 2000),
-                format: String(result.format ?? format),
-                outputs,
-              }
-            } catch (scriptErr: any) {
-              // Script execution failed, mark proxy and retry
-              await execFileAsync(pythonBin, [
-                join(scriptsDir, 'proxy_pool.py'),
-                '--action', 'fail',
-                '--proxy', proxyArg,
-              ], { timeout: 5000, encoding: 'utf-8', windowsHide: true }).catch(() => {})
-
-              if (attempt < maxRetries) continue
-              const msg = String(scriptErr?.stderr ?? scriptErr?.message ?? scriptErr)
-              throw new Error(`crawl_fetch 后台脚本执行失败（代理模式，已重试${maxRetries}次）: ${msg}`)
-            }
-          } catch (err: any) {
-            if (String(err.message).startsWith('PROXY_FAILED:')) {
-              // All proxies exhausted, ask user via model (throw error for model to handle)
-              throw new Error(`代理失效，是否走本地网络进行访问网页？(已重试${maxRetries}次)`)
-            }
-            if (attempt < maxRetries) continue
-            const msg = String(err?.stderr ?? err?.message ?? err)
-            throw new Error(`crawl_fetch 代理模式失败: ${msg}`)
-          }
+        const proxyRes = await execFileAsync(pythonBin, getProxyArgs,
+          { timeout: 15000, encoding: 'utf-8', windowsHide: true })
+        const proxyData = JSON.parse(proxyRes.stdout)
+        if (proxyData?.failed === true) {
+          // 代理池内部已跑满 3 轮筛选仍无可用代理；直接询问用户，避免放大重试
+          throw new Error('代理失效，是否走本地网络进行访问网页？')
         }
+        if (!proxyData?.proxy) {
+          throw new Error('代理池无可用代理，是否走本地网络进行访问网页？')
+        }
+        proxyAddr = String(proxyData.proxy)
       }
 
-      // No proxy or proxy disabled: run directly (existing behavior)
-      const scriptArgs = scriptBaseArgs
+      // 确保长驻浏览器服务在跑，采集脚本统一连它取渲染结果
+      const serverAddr = `127.0.0.1:${await ensureServer(pythonBin, scriptsDir, proxyAddr)}`
+
+      const buildScriptArgs = (addr: string): string[] => [
+        join(scriptsDir, `run_${engine}.py`),
+        '--url', args.url,
+        '--out', join(dataDir, outBase),
+        '--format', format,
+        '--server', addr,
+        ...(args.outFile ? [] : ['--auto-name']),
+        ...(args.selector ? ['--selector', args.selector] : []),
+      ]
+
+      // 执行采集。若浏览器服务不可达（客户端退出码 2），自动重启服务并重试一次。
       let stdout: string
       try {
-        const res = await execFileAsync(pythonBin, scriptArgs,
+        const res = await execFileAsync(pythonBin, buildScriptArgs(serverAddr),
           { timeout: config.timeoutMs ?? 180_000, encoding: 'utf-8', windowsHide: true })
         stdout = res.stdout
       } catch (err: any) {
-        // 脚本失败：仅把错误信息返回给智能体，不写任何本地文件
         const msg = String(err?.stderr ?? err?.message ?? err)
-        throw new Error(`crawl_fetch 后台脚本执行失败: ${msg}`)
+        if (Number(err?.code) !== 2) {
+          // 非"服务不可达"：仅把错误信息返回给智能体，不写任何本地文件
+          throw new Error(`crawl_fetch 后台脚本执行失败: ${msg}`)
+        }
+        // 服务不可达：关掉坏实例，重启后重试一次
+        killServer()
+        const newAddr = `127.0.0.1:${await ensureServer(pythonBin, scriptsDir, proxyAddr)}`
+        try {
+          const res = await execFileAsync(pythonBin, buildScriptArgs(newAddr),
+            { timeout: config.timeoutMs ?? 180_000, encoding: 'utf-8', windowsHide: true })
+          stdout = res.stdout
+        } catch (err2: any) {
+          const msg2 = String((err2 as any)?.stderr ?? (err2 as any)?.message ?? err2)
+          throw new Error(`crawl_fetch 后台脚本执行失败（浏览器服务已重启仍不可用）: ${msg2}`)
+        }
       }
 
       let result: any = {}

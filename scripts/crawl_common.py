@@ -160,3 +160,146 @@ def write_output(out_path: str, content: str) -> None:
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(content)
+
+
+# ── 长驻 Camoufox 服务（browser_server.py）的采集端共享客户核 ──────────────
+# 三个引擎脚本不再各自拉起浏览器：都向 dsh 插件常驻的 browser_server 要"渲染后的完整文档"，
+# 再在本模块统一做 selector 切片 + html/md/skeleton 派生 + 落盘 + 组装回传 JSON，避免三处漂移。
+import json as _json
+import socket
+
+# 渲染默认参数（与服务端 browser_server.py 的 DEFAULT_* 保持一致）
+RENDER_TIMEOUT_MS = 120_000
+RENDER_WAIT_MS = 6_000
+RENDER_SCROLL_PASSES = 4
+MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+
+
+class ServerUnreachable(Exception):
+    """无法连接长驻浏览器服务（服务未启动/已退出）。区别于"渲染成功但有页面错误"。"""
+
+
+def crawl_via_server(server: str, url: str, *, timeout_ms: int = RENDER_TIMEOUT_MS,
+                     wait_ms: int = RENDER_WAIT_MS, scroll_passes: int = RENDER_SCROLL_PASSES,
+                     connect_timeout: float = 30.0) -> dict:
+    """请求长驻 camoufox 服务渲染一页，返回 {status,title,html,partial,error}。
+
+    服务不可达时抛 ServerUnreachable（插件据此自动重启服务并重试一次）。
+    """
+    host, _, port_s = server.rpartition(':')
+    if '://' in host:
+        host = host.split('://', 1)[1]
+    port = int(port_s)
+    cmd = {'url': url, 'timeout_ms': timeout_ms, 'wait_ms': wait_ms,
+           'scroll_passes': scroll_passes, 'dismiss_cookies': True}
+    try:
+        with socket.create_connection((host, port), timeout=connect_timeout) as sock:
+            sock.sendall((_json.dumps(cmd, ensure_ascii=False) + '\n').encode('utf-8'))
+            buf = bytearray()
+            while not buf.endswith(b'\n'):
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+                if len(buf) > MAX_RESPONSE_BYTES:
+                    break
+        return _json.loads(buf.decode('utf-8'))
+    except (OSError, socket.timeout, _json.JSONDecodeError) as e:
+        raise ServerUnreachable(f'浏览器服务不可达({server}): {e}') from None
+
+
+def _match_node(el, tag, ids, classes) -> bool:
+    """简易 selector 匹配器：仅比对 tag / id 集合 / class 集合（cssselect 不可用时的兜底）。"""
+    if tag and el.tag != tag:
+        return False
+    if ids:
+        el_id = el.get('id')
+        if el_id not in ids:
+            return False
+    if classes:
+        el_classes = set(el.get('class', '').split()) if el.get('class') else set()
+        if not classes.issubset(el_classes):
+            return False
+    return True
+
+
+def first_match(tree, selector: str, tag=None, ids=None, classes=None):
+    """返回 tree 中命中 selector 的第一个元素；优先 cssselect，失败退回简易匹配。"""
+    if not ids and not classes:
+        pass
+    try:
+        nodes = tree.cssselect(selector)
+        if nodes:
+            return nodes[0]
+    except Exception:
+        pass
+    # 兜底：把 selector 拆成 tag/#id/.class，逐个深搜
+    for el in tree.iter():
+        if _match_node(el, tag, ids or set(), classes or set()):
+            return el
+    return None
+
+
+def narrow_by_selector(full_html: str, selector: str) -> str:
+    """取渲染后 HTML 中命中 selector 的第一处作为待转换片段；未命中回退整页完整文档。
+
+    三个引擎统一在这里切片（替代旧 camoufox 浏览器 locator / scrapling page.css 的分歧做法）。
+    cssselect 可用时走标准 CSS selector；不可用时对 'tag#id.cls' / '#id' / '.cls' 做简易匹配。
+    """
+    if not selector:
+        return full_html or ''
+    tree = _lhtml.fromstring(full_html or '')
+    tag, ids, classes = None, set(), set()
+    for tok in selector.split():
+        if tok.startswith('#'):
+            ids.add(tok[1:])
+        elif tok.startswith('.'):
+            classes.add(tok[1:])
+        elif tag is None:
+            tag = tok
+    node = first_match(tree, selector, tag, ids, classes)
+    if node is not None:
+        return _lhtml.tostring(node, encoding='unicode')
+    return full_html or ''
+
+
+def extract_preview_text(full_html: str, selector: str | None) -> str:
+    """从渲染后 HTML 抽一行文本预览（selector 命中则取该子树文本，否则取 body 文本）。"""
+    tree = _lhtml.fromstring(full_html or '')
+    el = None
+    if selector:
+        try:
+            nodes = tree.cssselect(selector)
+            el = nodes[0] if nodes else None
+        except Exception:
+            el = None
+    if el is None:
+        el = tree.find('.//body') if tree.find('.//body') is not None else tree
+    try:
+        return ' '.join((el.text_content() or '').split())[:2000]
+    except Exception:
+        return ''
+
+
+def build_crawl_result(html: str, title: str, status, partial: bool, url: str, out: str,
+                       selector: str | None, auto_name: bool, fmt_arg: str) -> dict:
+    """统一输出流水线：selector 切片 + 多格式派生落盘 + 组装回传 JSON（不落盘 JSON）。
+
+    返回 {"savedTo","status","preview","title","format","outputs"}，供采集脚本单行打到 stdout。
+    """
+    chunk = narrow_by_selector(html, selector)
+    formats = parse_formats(fmt_arg)
+    out_map = resolve_outputs(out, url, title, formats, auto_name)
+    outputs = []
+    for fmt in formats:
+        content = html_to_format(chunk, fmt)
+        write_output(out_map[fmt], content)
+        outputs.append({'format': fmt, 'path': out_map[fmt]})
+    return {
+        'savedTo': outputs[0]['path'],
+        'status': status or 0,
+        'preview': extract_preview_text(html, selector),
+        'title': title or 'untitled',
+        'format': fmt_arg,
+        'outputs': outputs,
+    }
