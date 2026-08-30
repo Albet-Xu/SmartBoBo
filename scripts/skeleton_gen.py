@@ -24,6 +24,9 @@ BLOCK_TAGS = {
 # 噪声标签：骨架生成时整棵剔除，不进入任何块
 NOISE_TAGS = {'script', 'style', 'noscript', 'iframe', 'svg', 'meta', 'link', 'template'}
 
+# 内联语义标签：在块级文本里用带标记的短格式展开，保留定位/交互信息（而非仅并入纯文本）
+INLINE_SEM_TAGS = {'a', 'img', 'input', 'select', 'textarea'}
+
 
 def build_selector(elem):
     """生成单个元素的选择器片段：tag + #id + .class..."""
@@ -55,6 +58,57 @@ def get_full_path(elem, root):
     return " > ".join(parts)
 
 
+def inline_label(elem):
+    """把链接/图片/表单控件格式化为带语义的短片段，嵌入块级文本。
+    链接 -> [文本](href)，图片 -> ![alt](src)，表单控件 -> tag name=.. type=..。
+    """
+    tag = elem.tag
+    if tag == 'a':
+        href = elem.get('href') or ''
+        text = re.sub(r'\s+', ' ', (elem.text_content() or '').strip())
+        if not text:
+            text = '链接'
+        if len(text) > 30:
+            text = text[:27] + '...'
+        return f"[{text}]({href})" if href else text
+    if tag == 'img':
+        src = elem.get('src') or ''
+        alt = (elem.get('alt') or '').strip() or '图片'
+        return f"![{alt}]({src})" if src else alt
+    # input / select / textarea：保留可定位与填充的属性
+    attrs = []
+    for a in ('name', 'type', 'value', 'placeholder'):
+        v = elem.get(a)
+        if v is not None and str(v):
+            attrs.append(f"{a}={v}")
+    extra = " " + " ".join(attrs) if attrs else ""
+    return f"{tag}{extra}"
+
+
+def extract_meta(tree):
+    """提取 head 的 title/keywords/description，拼成一行元信息；空则返回空串。"""
+    head = tree.find("head")
+    if head is None:
+        return ""
+    title = head.find(".//title")
+    title_text = (title.text_content().strip() if title is not None else "") or ""
+
+    def meta_content(name):
+        el = head.find(f".//meta[@name='{name}']")
+        return el.get("content", "").strip() if el is not None else ""
+
+    keywords = meta_content("keywords")
+    description = meta_content("description")
+    parts = []
+    if title_text:
+        parts.append(f"title: {title_text}")
+    if keywords:
+        parts.append(f"keywords: {keywords}")
+    if description:
+        parts.append(f"description: {description}")
+    return " | ".join(parts)
+
+
 def extract_direct_text(elem):
     """抽取当前元素不含块级子容器的直接文本内容。"""
     texts = []
@@ -64,6 +118,11 @@ def extract_direct_text(elem):
         if child.tag in BLOCK_TAGS:
             continue
         if child.tag in NOISE_TAGS:
+            continue
+        if child.tag in INLINE_SEM_TAGS:
+            child_label = inline_label(child)
+            if child_label:
+                texts.append(child_label)
             continue
         child_text = extract_direct_text(child)
         if child_text:
@@ -119,8 +178,10 @@ def process(elem, root):
             return child_entries
 
 
-def clean_skeleton(html_str: str) -> str:
-    """把 HTML 字符串转成骨架文本（路径去重、按路径排序）。"""
+def clean_skeleton(html_str: str, include_meta: bool = False) -> str:
+    """把 HTML 字符串转成骨架文本（路径去重、按路径排序）。
+    include_meta=True 时，在文件头追加一行 `# meta | title:.. | keywords:.. | description:..`。
+    """
     tree = html.fromstring(html_str)
     body = tree.find(".//body")
     root = body if body is not None else tree.getroottree().getroot()
@@ -134,6 +195,10 @@ def clean_skeleton(html_str: str) -> str:
         path_text_map[path] = list(dict.fromkeys(path_text_map[path]))
 
     lines = []
+    if include_meta:
+        meta = extract_meta(tree)
+        if meta:
+            lines.append(f"# meta | {meta}")
     for path in sorted(path_text_map.keys()):
         clean_texts = [re.sub(r'\s+', ' ', t) for t in path_text_map[path]]
         combined = "|".join(clean_texts)
@@ -142,6 +207,8 @@ def clean_skeleton(html_str: str) -> str:
     return "\n".join(lines)
 
 
-def html_to_skeleton(html_str: str) -> str:
-    """对外统一入口：渲染后的 HTML -> 块级骨架文本。"""
-    return clean_skeleton(html_str)
+def html_to_skeleton(html_str: str, include_meta: bool = False) -> str:
+    """对外统一入口：渲染后的 HTML -> 块级骨架文本。
+    include_meta=True 时附加 head 元信息行（默认关闭，保持行式契约与下游兼容）。
+    """
+    return clean_skeleton(html_str, include_meta=include_meta)
