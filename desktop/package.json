@@ -1,0 +1,114 @@
+{
+  "name": "bobo-desktop",
+  "version": "3.0.0",
+  "description": "BoBo 智能采集平台 · 桌面版（Electron 原生窗口）",
+  "main": "main.js",
+  "author": "BoBo",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.bobo.crawler",
+    "productName": "BoBo",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "staging/dsh",
+        "to": "runtime/dsh",
+        "filter": [
+          "**/*",
+          "!**/.env",
+          "!**/.env.*",
+          "!.env",
+          "!**/*.tsbuildinfo",
+          "!apps/web/dist/**/*.map",
+          "!**/__pycache__/**",
+          "!**/*.log",
+          "!node_modules/**",
+          "!**/node_modules/**",
+          "!msn_baxian_article.md",
+          "!docs/**",
+          "!website/**",
+          "!examples/**",
+          "!**/tests/**",
+          "!coverage/**",
+          "!**/.oxlint-*/**",
+          "!.claude/**",
+          "!.agents/**"
+        ]
+      },
+      {
+        "from": "pnpm-portable",
+        "to": "runtime/pnpm"
+      },
+      {
+        "from": "portable-node/node-v24.19.0-win-x64",
+        "to": "runtime/node"
+      },
+      {
+        "from": "../.venv",
+        "to": "runtime/.venv"
+      },
+      {
+        "from": "../engines",
+        "to": "runtime/engines"
+      },
+      {
+        "from": "../scripts",
+        "to": "runtime/scripts"
+      },
+      {
+        "from": "../dbx-runtime",
+        "to": "runtime/dbx",
+        "filter": [
+          "dbx-web.exe",
+          "dist/**"
+        ]
+      },
+      {
+        "from": "C:/Users/ausu/AppData/Local/camoufox",
+        "to": "runtime/camoufox"
+      },
+      {
+        "from": "../README.md",
+        "to": "runtime/README.md"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BoBo",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico"
+    },
+    "asar": true
+  }
+}

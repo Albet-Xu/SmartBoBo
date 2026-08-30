@@ -1,0 +1,9 @@
+# Electron 打包：只提交源码，不提交构建产物/大体积运行时
+node_modules/
+release/
+staging/
+portable-node/
+pnpm-portable/
+*.log
+*.tsbuildinfo
+electron-install.log
