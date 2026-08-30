@@ -11,6 +11,9 @@ import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MCPToolConfig, MCPToolsState } from './store.ts'
 import { MCPToolsStore } from './store.ts'
 import styles from './MCPToolsSection.module.css'
+import clsx from 'clsx'
+import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
 /** Parse `KEY=VALUE` lines from a textarea into an env/header record. */
@@ -26,6 +29,54 @@ function parseKeyValue(text: string): Record<string, string> {
     if (key !== '') result[key] = value
   }
   return result
+}
+
+/** One filtered dropdown option: a value plus its localized label. */
+interface FilterOption<T extends string> {
+  id: T
+  label: string
+}
+
+/**
+ * Self-drawn filter dropdown: a trigger button showing the current label and a
+ * chevron spaced a single gap after it (native select arrows are pinned to the
+ * right edge and drift far from short labels like "全部"). Uses the shared
+ * `Menu` primitive for the option list.
+ * @param props.open - whether the list is showing (owner-controlled).
+ * @param props.value - the current selected option id.
+ * @param props.options - selectable options.
+ * @param props.onChange - row selection callback (closes the list).
+ */
+function FilterMenu<T extends string>({ open, onOpenChange, value, options, onChange }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  value: T
+  options: readonly FilterOption<T>[]
+  onChange: (id: T) => void
+}) {
+  const current = options.find(option => option.id === value)
+  const items: MenuEntry[] = options.map(option => ({ id: option.id, label: option.label }))
+  return (
+    <Menu
+      open={open}
+      items={items}
+      selectedId={value}
+      onSelect={(id) => onChange(id as T)}
+      onClose={() => onOpenChange(false)}
+      anchor={
+        <button
+          type="button"
+          className={styles.filterTrigger}
+          onClick={() => onOpenChange(!open)}
+        >
+          <span className={styles.filterTriggerLabel}>{current?.label}</span>
+          <span className={clsx(styles.filterChevron, open && styles.filterOpen)} aria-hidden>
+            <IconChevronDownOutline14 />
+          </span>
+        </button>
+      }
+    />
+  )
 }
 
 /** Registration-side dependencies of {@link MCPToolsSection}. */
@@ -54,6 +105,7 @@ export function MCPToolsSection(props: MCPToolsSectionProps): ReactNode {
   const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'enabled' | 'disabled'>('all')
+  const [filterOpen, setFilterOpen] = useState(false)
   const [showInstallForm, setShowInstallForm] = useState(false)
   const [installError, setInstallError] = useState('')
   const [installing, setInstalling] = useState(false)
@@ -210,15 +262,17 @@ export function MCPToolsSection(props: MCPToolsSectionProps): ReactNode {
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ flex: 1, padding: '8px 12px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px' }}
         />
-        <select
-          className={styles.filterSelect}
+        <FilterMenu
+          open={filterOpen}
+          onOpenChange={setFilterOpen}
           value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-        >
-          <option value="all">{t('filterAll')}</option>
-          <option value="enabled">{t('filterEnabled')}</option>
-          <option value="disabled">{t('filterDisabled')}</option>
-        </select>
+          options={[
+            { id: 'all', label: t('filterAll') },
+            { id: 'enabled', label: t('filterEnabled') },
+            { id: 'disabled', label: t('filterDisabled') },
+          ]}
+          onChange={(status) => setFilterStatus(status)}
+        />
         <button
           type="button"
           onClick={() => setShowInstallForm(true)}

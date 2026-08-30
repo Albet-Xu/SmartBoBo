@@ -54,21 +54,33 @@
   gap: 8px;
 }
 
-.filterSelect {
-  /* 替换浏览器原生箭头，用背景自绘箭头以便控制位置（贴靠选项文字） */
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 8px 30px 8px 12px;
+.filterTrigger {
+  /* 自绘下拉触发器：文字与小箭头只隔一个空格（原生 select 箭头钉在右缘会偏很远） */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
   border: 1px solid var(--dsw-alias-border);
   border-radius: 6px;
   font-size: 14px;
   background-color: var(--dsw-alias-background);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M1 3l4 4 4-4' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
   color: var(--dsw-alias-text-primary);
-  outline: none;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.filterTriggerLabel {
+  line-height: 1;
+}
+
+.filterChevron {
+  display: inline-flex;
+  color: var(--dsw-alias-text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.filterOpen {
+  transform: rotate(180deg);
 }
 
 .installButton {

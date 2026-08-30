@@ -11,10 +11,61 @@ import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SkillsState } from './store.ts'
 import { SkillsStore } from './store.ts'
 import styles from './SkillsSection.module.css'
+import clsx from 'clsx'
+import { IconChevronDownOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
 /** Sentinel select value representing the ungrouped bucket in the move-to-group control. */
 const UNGROUPED_VALUE = '__ungrouped__'
+
+/** One filtered dropdown option: a value plus its localized label. */
+interface FilterOption<T extends string> {
+  id: T
+  label: string
+}
+
+/**
+ * Self-drawn filter dropdown: a trigger button showing the current label and a
+ * chevron spaced a single gap after it (native select arrows are pinned to the
+ * right edge and drift far from short labels like "全部"). Uses the shared
+ * `Menu` primitive for the option list.
+ * @param props.open - whether the list is showing (owner-controlled).
+ * @param props.value - the current selected option id.
+ * @param props.options - selectable options.
+ * @param props.onChange - row selection callback (closes the list).
+ */
+function FilterMenu<T extends string>({ open, onOpenChange, value, options, onChange }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  value: T
+  options: readonly FilterOption<T>[]
+  onChange: (id: T) => void
+}) {
+  const current = options.find(option => option.id === value)
+  const items: MenuEntry[] = options.map(option => ({ id: option.id, label: option.label }))
+  return (
+    <Menu
+      open={open}
+      items={items}
+      selectedId={value}
+      onSelect={(id) => onChange(id as T)}
+      onClose={() => onOpenChange(false)}
+      anchor={
+        <button
+          type="button"
+          className={styles.filterTrigger}
+          onClick={() => onOpenChange(!open)}
+        >
+          <span className={styles.filterTriggerLabel}>{current?.label}</span>
+          <span className={clsx(styles.filterChevron, open && styles.filterOpen)} aria-hidden>
+            <IconChevronDownOutline14 />
+          </span>
+        </button>
+      }
+    />
+  )
+}
 
 /** Registration-side dependencies of {@link SkillsSection}. */
 export interface SkillsSectionInjected {
@@ -46,6 +97,8 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'enabled' | 'disabled'>('all')
   const [filterSource, setFilterSource] = useState<'all' | 'local' | 'http' | 'github' | 'runtime'>('all')
+  const [statusOpen, setStatusOpen] = useState(false)
+  const [sourceOpen, setSourceOpen] = useState(false)
   const [activeGroup, setActiveGroup] = useState<ActiveGroup>('all')
   const [showNewGroup, setShowNewGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
@@ -190,26 +243,30 @@ export function SkillsSection(props: SkillsSectionProps): ReactNode {
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ flex: 1, padding: '8px 12px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px' }}
         />
-        <select
-          className={styles.filterSelect}
+        <FilterMenu
+          open={statusOpen}
+          onOpenChange={setStatusOpen}
           value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-        >
-          <option value="all">{t('filterAll')}</option>
-          <option value="enabled">{t('filterEnabled')}</option>
-          <option value="disabled">{t('filterDisabled')}</option>
-        </select>
-        <select
-          className={styles.filterSelect}
+          options={[
+            { id: 'all', label: t('filterAll') },
+            { id: 'enabled', label: t('filterEnabled') },
+            { id: 'disabled', label: t('filterDisabled') },
+          ]}
+          onChange={(status) => setFilterStatus(status)}
+        />
+        <FilterMenu
+          open={sourceOpen}
+          onOpenChange={setSourceOpen}
           value={filterSource}
-          onChange={(e) => setFilterSource(e.target.value as typeof filterSource)}
-        >
-          <option value="all">{t('filterAll')}</option>
-          <option value="local">{t('filterLocal')}</option>
-          <option value="http">{t('filterHttp')}</option>
-          <option value="github">{t('filterGithub')}</option>
-          <option value="runtime">{t('filterRuntime')}</option>
-        </select>
+          options={[
+            { id: 'all', label: t('filterAll') },
+            { id: 'local', label: t('filterLocal') },
+            { id: 'http', label: t('filterHttp') },
+            { id: 'github', label: t('filterGithub') },
+            { id: 'runtime', label: t('filterRuntime') },
+          ]}
+          onChange={(source) => setFilterSource(source)}
+        />
         <button
           type="button"
           onClick={handleInstall}

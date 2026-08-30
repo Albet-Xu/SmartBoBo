@@ -87,6 +87,44 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
     }))
   }
 
+  // 展开/折叠状态（仅界面态，不持久化）。卡片默认折叠，只显示代理源名称；点击即展开。
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+
+  const toggleExpand = (index: number) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }
+
+  // 调整顺序只在本地改 sources 数组，由右上角“保存”按钮持久化（顺序即优先级）。
+  const moveSource = (from: number, to: number) => {
+    if (from === to) return
+    setEdited(true)
+    setLocalConfig(prev => {
+      const next = [...prev.sources]
+      // `from` is a valid in-range index (the dragged card's own position).
+      const moved = next.splice(from, 1)[0] as ProxySource
+      next.splice(to, 0, moved)
+      return { ...prev, sources: next }
+    })
+  }
+
+  const endDrag = () => {
+    if (dragIndex !== null && overIndex !== null && dragIndex !== overIndex) {
+      moveSource(dragIndex, overIndex)
+    }
+    setDragIndex(null)
+    setOverIndex(null)
+  }
+
   const inputStyle: CSSProperties = {
     width: '100%',
     boxSizing: 'border-box',
@@ -211,7 +249,7 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
       </div>
 
       <div style={{ marginBottom: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
           <label style={{ ...labelStyle, margin: 0 }}>代理源列表</label>
           <button
             type="button"
@@ -221,31 +259,77 @@ export function ProxyPoolSection(props: ProxyPoolSectionProps): ReactNode {
             {t('addSource')}
           </button>
         </div>
+        <p style={{ fontSize: '12px', color: '#999', margin: '0 0 8px 0' }}>拖动卡片可调整顺序，越靠上优先级越高。</p>
 
-        {localConfig.sources.map((source, idx) => (
-          <div key={idx} style={{ border: '1px solid #ccc', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <input
-                type="text"
-                value={source.name}
-                onChange={(e) => updateSource(idx, { name: e.target.value })}
-                style={{ ...inputStyle, width: '200px' }}
-                placeholder={t('sourceName')}
-              />
-              <button
-                type="button"
-                onClick={() => removeSource(idx)}
-                style={{ padding: '4px 8px', border: '1px solid #ff4444', borderRadius: '4px', background: 'white', color: '#ff4444', cursor: 'pointer' }}
-              >
-                {t('deleteSource')}
-              </button>
+        {localConfig.sources.map((source, idx) => {
+          const isDragging = dragIndex === idx
+          const isOver = overIndex === idx
+          const isExpanded = expanded.has(idx)
+          return (
+            <div
+              key={idx}
+              onDragOver={(e) => { e.preventDefault(); setOverIndex(idx) }}
+              style={{
+                border: `1px solid ${isOver ? '#0066cc' : '#ccc'}`,
+                borderRadius: '8px',
+                padding: isExpanded ? '12px' : '8px 12px',
+                marginBottom: '8px',
+                opacity: isDragging ? 0.4 : 1,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => { if (!isExpanded) toggleExpand(idx) }}>
+                <span
+                  aria-hidden
+                  draggable
+                  onDragStart={(e) => { e.stopPropagation(); setDragIndex(idx) }}
+                  onDragEnd={endDrag}
+                  title="拖动调整顺序"
+                  style={{ cursor: 'grab', color: '#999', fontSize: '14px', lineHeight: 1, userSelect: 'none' }}
+                >≡</span>
+                {!isExpanded && (
+                  <button
+                    type="button"
+                    aria-expanded={false}
+                    onClick={() => toggleExpand(idx)}
+                    style={{ border: 'none', background: 'transparent', color: '#666', cursor: 'pointer', padding: 0, fontSize: '12px', width: 20 }}
+                  >▸</button>
+                )}
+                {isExpanded ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-expanded={true}
+                      onClick={() => toggleExpand(idx)}
+                      style={{ border: 'none', background: 'transparent', color: '#666', cursor: 'pointer', padding: 0, fontSize: '12px', width: 20 }}
+                    >▾</button>
+                    <input
+                      type="text"
+                      value={source.name}
+                      onChange={(e) => updateSource(idx, { name: e.target.value })}
+                      style={{ ...inputStyle, flex: 1 }}
+                      placeholder={t('sourceName')}
+                    />
+                  </>
+                ) : (
+                  <span style={{ fontSize: '14px', fontWeight: 500, color: '#333', flex: 1 }}>{source.name || '（未命名代理源）'}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeSource(idx)}
+                  style={{ padding: '4px 8px', border: '1px solid #ff4444', borderRadius: '4px', background: 'white', color: '#ff4444', cursor: 'pointer' }}
+                >
+                  {t('deleteSource')}
+                </button>
+              </div>
+              {isExpanded && (
+                <div style={{ marginTop: '8px' }}>
+                  <label style={{ fontSize: '12px' }}>{t('apiUrl')}</label>
+                  <input type="text" value={source.apiUrl} onChange={(e) => updateSource(idx, { apiUrl: e.target.value })} style={inputStyle} />
+                </div>
+              )}
             </div>
-            <div>
-              <label style={{ fontSize: '12px' }}>{t('apiUrl')}</label>
-              <input type="text" value={source.apiUrl} onChange={(e) => updateSource(idx, { apiUrl: e.target.value })} style={inputStyle} />
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {edited && (
