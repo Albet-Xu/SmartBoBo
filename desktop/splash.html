@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>BoBo 启动中</title>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      background: #10141a; color: #e6edf3; user-select: none;
+      font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    .box { width: 360px; text-align: center; }
+    .logo { font-size: 22px; font-weight: 650; letter-spacing: .5px; }
+    .sub  { font-size: 13px; color: #9aa4b2; margin-top: 6px; }
+    .bar  { width: 100%; height: 6px; border-radius: 3px; background: #242c36; overflow: hidden; margin-top: 26px; }
+    .bar > i { display: block; height: 100%; width: 40%; border-radius: 3px; background: #4f9cff; animation: slide 1.15s ease-in-out infinite; }
+    @keyframes slide {
+      0%   { transform: translateX(-110%); }
+      50%  { transform: translateX(180%); }
+      100% { transform: translateX(320%); }
+    }
+    .status { margin-top: 16px; font-size: 12px; color: #c3cad4; min-height: 18px; line-height: 18px; }
+    .err { color: #ff7a72; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="logo">BoBo 智能采集平台</div>
+    <div class="sub">正在启动…</div>
+    <div class="bar"><i></i></div>
+    <div class="status" id="status">正在初始化…</div>
+  </div>
+  <script>
+    if (window.boboDesktop && window.boboDesktop.onStatus) {
+      window.boboDesktop.onStatus(function (text) {
+        var el = document.getElementById('status')
+        if (!el || !text) return
+        el.textContent = text
+        if (/失败|超时|错误/.test(text)) el.className = 'status err'
+      })
+    }
+  </script>
+</body>
+</html>

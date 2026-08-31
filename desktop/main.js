@@ -26,6 +26,15 @@ let backendProc = null
 let dbxProc = null
 let win = null
 
+/** 向启动窗口推送进度文字（splash.html 通过 preload 的 onStatus 接收）。 */
+function status(text) {
+  try {
+    if (win && !win.isDestroyed()) win.webContents.send('bobo-status', text)
+  } catch {
+    /* 窗口尚未就绪时忽略 */
+  }
+}
+
 function setEnv() {
   process.env.BOBO_ROOT = projectRoot
   const venv = path.join(projectRoot, isDev ? '.venv' : '.venv')
@@ -38,28 +47,45 @@ function setEnv() {
 
 /**
  * 首次运行策略：安装包不带 node_modules 以瘦身，改用内置 Node+pnpm 就地重建。
- * pnpm 在没有符号链接权限的机器上会退回使用目录 junction（无需任何权限），
- * 因此接收者无需开发者模式也能拿到可搬迁、可用的依赖树。
- * 已装好（存在 node_modules/.pnpm）则直接返回；否则执行 pnpm install 并在完成后 resolve。
+ * pnpm 在没有符号链接权限的机器上会退回使用目录 junction（无需任何权限）。
+ * 关键健壮性：
+ *  - 走国内镜像 `registry.npmmirror.com`：默认 npmjs 源在国内常超时/被墙导致安装失败；
+ *  - `--ignore-scripts`：跳过 esbuild/lefthook 等需联网下二进制的 postinstall，
+ *    运行时已验证无需这些脚本产物也能正常起服务；
+ *  - 失败自动用 `--no-frozen-lockfile` 重试一次。
+ * 已装好（存在 node_modules/.pnpm）则直接返回；否则执行 pnpm install。
  * @returns whether dependencies are present（或已成功安装）。
  */
 function ensureDeps() {
   const nm = path.join(dshDir, 'node_modules')
-  if (fs.existsSync(path.join(nm, '.pnpm'))) return Promise.resolve(true)
+  if (fs.existsSync(path.join(nm, '.pnpm'))) {
+    status('依赖已就绪')
+    return Promise.resolve(true)
+  }
   const pnpmScript = isDev
     ? 'pnpm'
     : path.join(process.resourcesPath, 'runtime', 'pnpm', 'bin', 'pnpm.mjs')
-  return new Promise((resolve) => {
+  const baseArgs = ['--registry=https://registry.npmmirror.com/', '--ignore-scripts', '--reporter=append-only']
+  const attempt = (extraArgs) => new Promise((resolve) => {
     const depLog = fs.createWriteStream(path.join(app.getPath('userData'), 'bobo-pnpm.log'), { flags: 'a' })
-    depLog.write(`\n[first-run] pnpm install --frozen-lockfile in ${dshDir}\n`)
-    const child = spawn(nodeBin, [pnpmScript, 'install', '--frozen-lockfile'], {
+    depLog.write(`\n[first-run] pnpm ${extraArgs.join(' ')} in ${dshDir}\n`)
+    const child = spawn(nodeBin, [pnpmScript, ...extraArgs], {
       cwd: dshDir,
       env: { ...process.env, BOBO_ROOT: projectRoot },
-      stdio: ['ignore', depLog, depLog],
+      stdio: ['ignore', 'pipe', 'pipe'],
     })
+    if (child.stdout) child.stdout.pipe(depLog)
+    if (child.stderr) child.stderr.pipe(depLog)
     child.on('close', (code) => { depLog.end(); resolve(code === 0) })
     child.on('error', () => { depLog.end(); resolve(false) })
   })
+  status('首次运行：正在安装依赖（走国内镜像，约 1–3 分钟）…')
+  return attempt(['install', '--frozen-lockfile', ...baseArgs])
+    .then((ok) => (ok ? true : attempt(['install', ...baseArgs])))
+    .then((ok) => {
+      status(ok ? '依赖安装完成' : '依赖安装失败：请检查网络后重试（详见日志 bobo-pnpm.log）')
+      return ok
+    })
 }
 
 function waitForPort(host, port, timeoutMs) {
@@ -102,8 +128,10 @@ async function launchBackend() {
   backendProc = spawn(nodeBin, args, {
     cwd: dshDir,
     env,
-    stdio: ['ignore', logFile, logFile],
+    stdio: ['ignore', 'pipe', 'pipe'],
   })
+  if (backendProc.stdout) backendProc.stdout.pipe(logFile)
+  if (backendProc.stderr) backendProc.stderr.pipe(logFile)
   backendProc.on('error', (err) => {
     logFile.write(`[spawn error] ${err.message}\n`)
   })
@@ -142,15 +170,44 @@ function killChildren() {
 
 app.whenReady().then(async () => {
   setEnv()
+
+  // 1) 立即显示启动进度窗口：双击图标马上有反馈，不再“无反应”。
+  win = new BrowserWindow({
+    width: 420,
+    height: 300,
+    resizable: false,
+    center: true,
+    autoHideMenuBar: true,
+    title: 'BoBo 启动中',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  win.setMenuBarVisibility(false)
+  win.loadFile(path.join(__dirname, 'splash.html'))
+
   launchDbx()
-  await launchBackend()
+  status('正在准备后端环境…')
+  const depsOk = await ensureDeps()
+  if (!depsOk) return // 失败时启动窗口停留并显示错误文字
+
+  status('正在启动服务…')
+  launchBackend()
   try {
-    // 首次运行需要就地 pnpm install（数十秒到数分钟），窗口等后端真正就绪后再加载。
     await waitForPort('127.0.0.1', 7070, 600000)
   } catch (err) {
     console.error(`[backend] ${err.message}`)
+    status('服务启动超时，请查看日志 bobo-backend.log')
+    return
   }
-  win = new BrowserWindow({
+  status('启动完成')
+
+  // 2) 用主窗口替换启动窗口
+  const splash = win
+  const mainWin = new BrowserWindow({
     width: 1360,
     height: 860,
     autoHideMenuBar: true,
@@ -161,8 +218,10 @@ app.whenReady().then(async () => {
       nodeIntegration: false,
     },
   })
-  win.loadURL('http://127.0.0.1:7070')
-  win.on('closed', () => { win = null })
+  mainWin.setMenuBarVisibility(false)
+  mainWin.loadURL('http://127.0.0.1:7070')
+  win = mainWin
+  if (splash && !splash.isDestroyed()) splash.close()
 })
 
 app.on('window-all-closed', () => {
