@@ -1,6 +1,6 @@
 {
   "name": "bobo-desktop",
-  "version": "1.3.2",
+  "version": "1.3.4",
   "description": "BoBo 智能采集平台 · 桌面版（Electron 原生窗口）",
   "main": "main.js",
   "author": "BoBo",
@@ -14,6 +14,11 @@
   "devDependencies": {
     "electron": "^31.7.7",
     "electron-builder": "^24.13.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
   },
   "build": {
     "appId": "com.bobo.crawler",
@@ -51,6 +56,18 @@
           "!.claude/**",
           "!.agents/**"
         ]
+      },
+      {
+        "from": "staging/pnpm-store",
+        "to": "runtime/dsh/.pnpm-store"
+      },
+      {
+        "from": "staging/pnpm-cache",
+        "to": "runtime/pnpm-cache"
+      },
+      {
+        "from": "staging/python",
+        "to": "runtime/python"
       },
       {
         "from": "pnpm-portable",

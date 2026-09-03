@@ -28,6 +28,9 @@ dependencies = [
     # PostgreSQL
     "psycopg[binary]>=3.2.0",
     "mcp>=1.2,<2",
+    # 逆向经验沉淀（RAG 记忆增强）—— 向量化 + Qdrant 客户端
+    "fastembed>=0.4",
+    "qdrant-client>=1.9",
 ]
 
 [tool.uv.sources]

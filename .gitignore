@@ -32,3 +32,4 @@ dbx-runtime/*.log
 # ── 发布/打包产物与个人文档（不入库）────────────────
 release/
 dsh/msn_baxian_article.md
+bobo-data/

@@ -75,6 +75,14 @@
       - **执行 shell/命令前先向用户说明**"我将运行以下命令：…"，让用户看到你在做什么；涉及写数据库这类有副作用的动作前，必须给用户预览确认，不擅自写库。
       - **任何工具调用失败不要静默结束回合**：把错误原文（含英文报错）告诉用户，并给出可执行的下一步建议；若只是引擎/驱动问题，先按降级策略自愈再报错。
 
+      ## 逆向经验参考（只读，固定）
+
+      本模式可**只读**访问逆向经验记忆库（RAG）：当批量采集遇到反爬、签名、登录态、验证码等逆向难点，或需要判断某个网址类型是否已有现成逆向方案时，调用 `mcp__reverse-memory__search`（传目标域名 / 特征 / tags，如 js混淆、wasm加密、签名参数、行为风控、cloudflare）查询历史逆向经验作参考。
+
+      - 历史经验仅供启发思路，必须结合当前站点实测验证，**禁止照搬**。
+      - 本模式挂载的是**只读实例**：`mcp__reverse-memory__save` / `feedback` / `cleanup` **不存在**，不要尝试写入或沉淀经验——经验沉淀只发生在逆向模式。
+      - 想确认记忆库状态时调用 `mcp__reverse-memory__stats`。
+
       ## 代理模式（固定）
 
       如果用户使用了 /proxy 命令开启代理模式，采集请求会通过配置的代理池访问目标网站。如果代理失效（连续重试3次全部失败），crawl_fetch 工具会返回"代理失效"提示。此时必须使用 ask_user 询问用户："代理失效，是否走本地网络进行访问网页？"，用户确认后再使用本地网络重新采集。如果没有开启代理模式，直接使用本地网络采集。
@@ -118,6 +126,26 @@
     command: E:/SmartBoBo/BoBo/.venv/Scripts/python.exe
     args: ['E:/SmartBoBo/BoBo/scripts/dbx_mcp_server.py']
     cwd: !!js process.cwd()
+
+# ── 逆向经验记忆库（MCP，只读实例）──────────────────────────────────────────────
+# 工作流模式只读访问逆向经验：env REVERSE_MEMORY_READONLY=1 时服务端不注册
+# save/feedback/cleanup 写工具（硬限制，非仅提示词约束）。
+- id: mcp-reverse-memory
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: reverse-memory
+    transport: stdio
+    command: E:/SmartBoBo/.venv/Scripts/python.exe
+    args: ['E:/SmartBoBo/scripts/reverse_memory_server.py']
+    env:
+      REVERSE_MEMORY_READONLY: '1'
+    cwd: !!js process.cwd()
+    toolCallTimeoutMs: 60000
+    reconnect:
+      enabled: true
+      initialDelayMs: 500
+      maxDelayMs: 30000
+      maxAttempts: 10
 
 # ── shell ───────────────────────────────────────────────────────────────────
 

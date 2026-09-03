@@ -33,6 +33,15 @@
       2. **使用 js-reverse 等网页逆向工具**：调用 `mcp__js-reverse__*` 系列 MCP 工具分析页面与接口——定位关键数据接口，分析其 URL、参数、请求头、Cookie、签名/加密逻辑，识别 JS 中对参数的加密、混淆、时间戳签名等逆向难点，确认数据返回结构（JSON/HTML）与要提取的字段。
       3. **结合相关技能**：调用用户已安装的爬虫 / 网页逆向相关 skills，以及内置模板技能 `reverse-crawler`，选择合理、稳定的采集方案。
 
+      ## 逆向经验记忆库（RAG 记忆增强，固定）
+
+      你的逆向经验会自动沉淀进记忆库（本地 MD 日志 + Qdrant 向量库，见 `reverse-experience` 技能），逆向新站点时可检索复用，避免重复踩坑。
+
+      1. **逆向前必查**：拿到新站点、深入分析前，先调用 `mcp__reverse-memory__search` 检索相似历史案例：传目标域名、已观察到的特征（反爬 SDK / 签名参数名 / 混淆特征 / 412 或 403 现象等），以及 `tags`（如 js混淆 / obfuscator.io / wasm加密 / 签名参数 / 行为风控 / cloudflare / 动态cookie）。命中后把历史经验当作**待验证假设**，结合当前站点实测确认，**禁止直接照搬**（站点会改版，旧结论可能已过期）；分析卡壳时再检索一次。
+      2. **结束时必沉淀**：逆向任务结束（成功/失败/部分成功都要沉淀）时，按 `reverse-experience` 技能与 `log_template.md` 组织内容，调用 `mcp__reverse-memory__save` 入库。置信度 1-5 如实自评（只跑通一次 ≤2.0，同一方案多次验证才给高分）；**< 1.8 会被服务端直接丢弃、不留任何文件**。失败日志同样要存，写明试过什么无效、卡在哪。真实 Cookie / Token / 密钥必须打码，不写原文。
+      3. **采纳后反馈**：参考过某条历史经验后，成功就调用 `mcp__reverse-memory__feedback(<经验id>, "success")`，失败调用 `mcp__reverse-memory__feedback(<经验id>, "fail")`——让靠谱案例越用越靠前，不靠谱的自动下沉。
+      4. **状态确认**：需要确认记忆库是否正常时调用 `mcp__reverse-memory__stats`。
+
       ## 主动询问用户
 
       当逆向过程遇到难以自动跳过的环节、且需要用户提供关键信息时，必须用 ask_user 主动询问，不要猜测或编造。常见需要询问的信息：
@@ -84,6 +93,25 @@
   name: '@deepseek-ai/dsh-agent-instructions'
   config:
     maxBytes: 65536
+
+# ── 逆向经验记忆库（MCP，读写实例）────────────────────────────────────────────
+# RAG 记忆增强：逆向前查历史经验 / 结束后自动沉淀 / 采纳后反馈。
+# command 指向本机 BoBo .venv python（与 dbx-mcp 同先例；跨机器部署时按
+# tool-acquisition 的 findProjectRoot 约定调整实际路径）。
+- id: mcp-reverse-memory
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: reverse-memory
+    transport: stdio
+    command: E:/SmartBoBo/.venv/Scripts/python.exe
+    args: ['E:/SmartBoBo/scripts/reverse_memory_server.py']
+    cwd: !!js process.cwd()
+    toolCallTimeoutMs: 60000
+    reconnect:
+      enabled: true
+      initialDelayMs: 500
+      maxDelayMs: 30000
+      maxAttempts: 10
 
 # ── shell ───────────────────────────────────────────────────────────────────
 

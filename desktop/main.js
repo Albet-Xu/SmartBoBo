@@ -5,6 +5,7 @@ const { app, BrowserWindow } = require('electron')
 const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
+const os = require('node:os')
 const http = require('node:http')
 
 const isDev = !app.isPackaged
@@ -14,13 +15,55 @@ const projectRoot = isDev
   : path.join(process.resourcesPath, 'runtime')
 
 const dshDir = path.join(projectRoot, 'dsh')
-const dbxDir = path.join(projectRoot, 'dbx-runtime')
+// 打包版把 dbx 装在 runtime/dbx（package.json 的 extraResources 映射），开发版在仓库根 dbx-runtime。
+const dbxDir = path.join(projectRoot, isDev ? 'dbx-runtime' : 'dbx')
 const dbxBin = path.join(dbxDir, 'dbx-web.exe')
 // dsh 需要 Node ^22.19 / >=24；Electron 内置 Node 20 太老，所以后端用随包附带的
 // 便携 Node（开发模式下直接用系统 node）。
 const nodeBin = isDev
   ? 'node'
-  : path.join(process.resourcesPath, 'node', 'node.exe')
+  : path.join(projectRoot, 'node', 'node.exe')
+
+// 用户数据根目录：打包版放在安装目录同级（升级/卸载都不受影响，随安装盘走）；
+// 开发版放在仓库内 bobo-data。里面是会话记录、设置、API Key、日志与浏览器缓存，
+// 统一搬离系统 C 盘用户目录，减轻 C 盘负担。
+const dataRoot = path.resolve(isDev
+  ? path.join(projectRoot, 'bobo-data')
+  : path.join(path.dirname(process.resourcesPath), '..', 'BoBoData'))
+
+/**
+ * 把 dsh home（会话/设置/附件等）与 Electron userData（日志/缓存）一并指到
+ * 数据根：DSH_HOME 由后端子进程继承，userData 决定本进程的日志与浏览器数据。
+ */
+function setDataPaths() {
+  const dshHome = path.join(dataRoot, 'dsh')
+  const electronData = path.join(dataRoot, 'electron')
+  fs.mkdirSync(dshHome, { recursive: true })
+  fs.mkdirSync(electronData, { recursive: true })
+  process.env.DSH_HOME = dshHome
+  app.setPath('userData', electronData)
+}
+
+/**
+ * 首次运行迁移：把旧 <用户主目录>/.dsh 整体复制到新的 DSH_HOME。
+ * 仅当新位置尚无 sessions（未迁移过）时执行一次；旧目录保留不删，失败不阻塞启动。
+ */
+function migrateLegacyDsh() {
+  const legacy = path.join(os.homedir(), '.dsh')
+  const target = process.env.DSH_HOME
+  if (!target || !fs.existsSync(legacy)) return
+  if (fs.existsSync(path.join(target, 'sessions'))) return
+  try {
+    fs.cpSync(legacy, target, { recursive: true })
+    console.log(`[migrate] 已将旧数据 ${legacy} 复制到 ${target}`)
+  } catch (err) {
+    console.warn(`[migrate] 旧数据迁移失败（不影响启动）: ${err.message}`)
+  }
+}
+
+// 尽早固定数据根路径：任何 getPath('userData') 与后端子进程 env 都基于它。
+setDataPaths()
+migrateLegacyDsh()
 
 let backendProc = null
 let dbxProc = null
@@ -46,6 +89,31 @@ function setEnv() {
 }
 
 /**
+ * 跨机关键：把打包内 .venv 的 pyvenv.cfg `home` 改指到随包捆绑的基础 Python
+ * (runtime/python)。否则 venv 会去构建机的 D:\Application\Python 找解释器，
+ * 别人机器上没有该路径，采集脚本将无法运行。home 不能用相对路径（相对 CWD 解析），
+ * 因此必须在目标机按实际安装位置写绝对路径。
+ */
+function fixVenvPython() {
+  if (isDev) return
+  const venv = path.join(projectRoot, '.venv')
+  const base = path.join(projectRoot, 'python')
+  const cfg = path.join(venv, 'pyvenv.cfg')
+  if (!fs.existsSync(cfg) || !fs.existsSync(path.join(base, 'python.exe'))) return
+  try {
+    const content = [
+      `home = ${base}`,
+      'implementation = CPython',
+      'version_info = 3.13.5',
+      'include-system-site-packages = false',
+    ].join('\n') + '\n'
+    fs.writeFileSync(cfg, content, 'utf8')
+  } catch (err) {
+    /* 写入失败不影响启动；采集时若 venv 异常会另有提示 */
+  }
+}
+
+/**
  * 首次运行策略：安装包不带 node_modules 以瘦身，改用内置 Node+pnpm 就地重建。
  * pnpm 在没有符号链接权限的机器上会退回使用目录 junction（无需任何权限）。
  * 关键健壮性：
@@ -65,7 +133,13 @@ function ensureDeps() {
   const pnpmScript = isDev
     ? 'pnpm'
     : path.join(process.resourcesPath, 'runtime', 'pnpm', 'bin', 'pnpm.mjs')
-  const baseArgs = ['--registry=https://registry.npmmirror.com/', '--ignore-scripts', '--reporter=append-only']
+  // v1.3.3 起：依赖不再用联网重装，而是把 pnpm store 打进安装包（runtime/dsh/.pnpm-store）。
+  // 首启用内置 Node + pnpm 从本地 store 离线重建 node_modules，零联网、不依赖外网镜像，
+  // 避免「目标盘无缓存时要整包重新下载依赖导致失败」的问题。开发模式维持原联网逻辑。
+  const bundledStore = isDev ? null : path.join(dshDir, '.pnpm-store')
+  const baseArgs = isDev
+    ? ['--registry=https://registry.npmmirror.com/', '--ignore-scripts', '--reporter=append-only']
+    : ['--offline', '--store-dir=' + bundledStore, '--ignore-scripts', '--reporter=append-only']
   const attempt = (extraArgs) => new Promise((resolve) => {
     const depLog = fs.createWriteStream(path.join(app.getPath('userData'), 'bobo-pnpm.log'), { flags: 'a' })
     depLog.write(`\n[first-run] pnpm ${extraArgs.join(' ')} in ${dshDir}\n`)
@@ -79,7 +153,7 @@ function ensureDeps() {
     child.on('close', (code) => { depLog.end(); resolve(code === 0) })
     child.on('error', () => { depLog.end(); resolve(false) })
   })
-  status('首次运行：正在安装依赖（走国内镜像，约 1–3 分钟）…')
+  status(isDev ? '首次运行：正在安装依赖（走国内镜像）…' : '首次运行：正在从本地 store 离线重建依赖…')
   return attempt(['install', '--frozen-lockfile', ...baseArgs])
     .then((ok) => (ok ? true : attempt(['install', ...baseArgs])))
     .then((ok) => {
@@ -142,12 +216,12 @@ function launchDbx() {
     console.error(`[dbx] 未找到 ${dbxBin}，数据库面板不可用`)
     return
   }
-  fs.mkdirSync(path.join(dbxDir, 'data'), { recursive: true })
+  fs.mkdirSync(path.join(dataRoot, 'dbx'), { recursive: true })
   dbxProc = spawn(dbxBin, [], {
     env: {
       ...process.env,
       DBX_STATIC_DIR: path.join(dbxDir, 'dist'),
-      DBX_DATA_DIR: path.join(dbxDir, 'data'),
+      DBX_DATA_DIR: path.join(dataRoot, 'dbx'),
       DBX_PORT: '4224',
       DBX_DISABLE_PASSWORD: '1',
     },
@@ -170,7 +244,7 @@ function killChildren() {
 
 app.whenReady().then(async () => {
   setEnv()
-
+  fixVenvPython()
   // 1) 立即显示启动进度窗口：双击图标马上有反馈，不再“无反应”。
   win = new BrowserWindow({
     width: 420,

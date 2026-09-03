@@ -112,6 +112,26 @@ BoBo 是一个智能采集平台，基于 DeepSeek Harness 构建，集成了多
 - `~/.dsh/settings.yaml` - skill-library 登记 db-extraction
 - `BoBo/pyproject.toml` - 添加 pymysql / psycopg 数据库驱动
 
+### 2.7 逆向经验沉淀（RAG 记忆增强）
+
+**文档位置**: `功能实现/30-逆向经验沉淀RAG记忆增强操作指南.md`
+
+**修改内容**:
+- 逆向模式新增经验记忆库：逆向成功/失败经验按模板自动沉淀为本地 MD + 向量化入服务器 Qdrant
+- 逆向新站点前按「域名+标签+语义」混合检索历史案例，避免重复踩坑（RAG 记忆增强）
+- 置信度 ≥1.8 才入库，<1.8 直接放弃；采纳反馈成功 +0.5 / 失败 −0.5，跌破 1.8 自动出库归档
+- 工作流模式只读访问经验库（服务端不注册写工具，硬约束）
+- 服务器部署 Qdrant Docker（数据卷 `/home/idata/Qdrant`，API Key 认证）
+
+**关键文件**:
+- `BoBo/dsh/apps/cli/config/agent-presets/reverse/agent.cordis.yml` - 逆向预设（mcp-reverse-memory 读写实例 + persona RAG 段落）
+- `BoBo/dsh/apps/cli/config/agent-presets/workflow/agent.cordis.yml` - 工作流预设（mcp-reverse-memory 只读实例 + persona 只读段）
+- `BoBo/dsh/.agents/skills/reverse-experience/` 与 `~/.dsh/skills/reverse-experience/` - 技能（SKILL.md / log_template.md / memory_store.py）
+- `BoBo/scripts/reverse_memory_server.py` - reverse-memory MCP server
+- `BoBo/pyproject.toml` - 添加 fastembed / qdrant-client
+- `~/.dsh/settings.yaml` - skill-library 登记 reverse-experience
+- `BoBo/bobo-data/reverse-experience/` - 经验数据目录（MD 日志 + registry，gitignore）
+
 ## 3. 文档结构
 
 ```
