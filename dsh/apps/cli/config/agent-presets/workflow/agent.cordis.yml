@@ -133,8 +133,9 @@
   config:
     serverName: dbx
     transport: stdio
-    command: E:/SmartBoBo/.venv/Scripts/python.exe
-    args: ['E:/SmartBoBo/scripts/dbx_mcp_server.py']
+    # 相对后端 cwd（dsh/）解析：跨机器可移植，`../` 指向 BoBo 根。
+    command: ../.venv/Scripts/python.exe
+    args: ['../scripts/dbx_mcp_server.py']
     cwd: !!js process.cwd()
 
 # ── 逆向经验记忆库（MCP，只读实例）──────────────────────────────────────────────
@@ -145,8 +146,8 @@
   config:
     serverName: reverse-memory
     transport: stdio
-    command: E:/SmartBoBo/.venv/Scripts/python.exe
-    args: ['E:/SmartBoBo/scripts/reverse_memory_server.py']
+    command: ../.venv/Scripts/python.exe
+    args: ['../scripts/reverse_memory_server.py']
     env:
       REVERSE_MEMORY_READONLY: '1'
     cwd: !!js process.cwd()

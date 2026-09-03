@@ -53,7 +53,9 @@ FEEDBACK_DELTA = {"success": +CONFIDENCE_STEP, "fail": -CONFIDENCE_STEP}
 _SKILL_DIR = Path(__file__).resolve().parent
 
 # ── dbx_connector 单一实现来源（用户级技能优先，回退项目技能/脚本目录） ─────────
+_DSH_HOME = Path(os.environ["DSH_HOME"]) if os.environ.get("DSH_HOME") else None
 _DBX_CONNECTOR_CANDIDATES = (
+    *((_DSH_HOME / "skills" / "db-extraction" / "dbx_connector.py",) if _DSH_HOME else ()),
     Path.home() / ".dsh" / "skills" / "db-extraction" / "dbx_connector.py",
     Path(__file__).resolve().parent.parent / "db-extraction" / "dbx_connector.py",
     Path(__file__).resolve().parent.parent.parent / "scripts" / "dbx_connector.py",
@@ -118,8 +120,14 @@ def bobo_root() -> Path | None:
 
 
 def data_dir() -> Path:
-    root = bobo_root()
-    base = (root / "bobo-data" if root else Path.home() / "bobo-data")
+    # DSH_HOME（桌面壳/打包版用户数据根）优先：数据存到 DSH_HOME 同级
+    # reverse-experience，开发（bobo-data）与打包（BoBoData）布局一致；
+    # 无 DSH_HOME 时回退旧逻辑（BoBo 根 bobo-data / 用户主目录）。
+    if _env("DSH_HOME"):
+        base = Path(_env("DSH_HOME")).parent
+    else:
+        root = bobo_root()
+        base = root / "bobo-data" if root else Path.home() / "bobo-data"
     d = base / RESULTS_DIR_NAME
     d.mkdir(parents=True, exist_ok=True)
     return d

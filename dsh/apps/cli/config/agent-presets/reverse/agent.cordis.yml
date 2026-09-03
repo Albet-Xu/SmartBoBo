@@ -100,15 +100,14 @@
 
 # ── 逆向经验记忆库（MCP，读写实例）────────────────────────────────────────────
 # RAG 记忆增强：逆向前查历史经验 / 结束后自动沉淀 / 采纳后反馈。
-# command 指向本机 BoBo .venv python（与 dbx-mcp 同先例；跨机器部署时按
-# tool-acquisition 的 findProjectRoot 约定调整实际路径）。
+# 相对后端 cwd（dsh/）解析：跨机器可移植，`../` 指向 BoBo 根。
 - id: mcp-reverse-memory
   name: '@deepseek-ai/dsh-mcp-client'
   config:
     serverName: reverse-memory
     transport: stdio
-    command: E:/SmartBoBo/.venv/Scripts/python.exe
-    args: ['E:/SmartBoBo/scripts/reverse_memory_server.py']
+    command: ../.venv/Scripts/python.exe
+    args: ['../scripts/reverse_memory_server.py']
     cwd: !!js process.cwd()
     toolCallTimeoutMs: 60000
     reconnect:

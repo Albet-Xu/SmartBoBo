@@ -16,11 +16,16 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 # ── 导入 memory_store（技能目录为单一实现来源；找不到时回退脚本同目录） ─────────
-_SKILL_DIR = Path.home() / ".dsh" / "skills" / "reverse-experience"
+# 查找顺序：DSH_HOME（桌面壳/打包版用户数据根）> 旧 ~/.dsh > 项目 .agents > 脚本同目录。
+_dsh_home = os.environ.get("DSH_HOME")
+_SKILL_DIR = Path(_dsh_home) / "skills" / "reverse-experience" if _dsh_home else None
+if not _SKILL_DIR or not _SKILL_DIR.is_dir():
+    _SKILL_DIR = Path.home() / ".dsh" / "skills" / "reverse-experience"
 if not _SKILL_DIR.is_dir():
     _SKILL_DIR = Path(__file__).resolve().parent.parent / "dsh" / ".agents" / "skills" / "reverse-experience"
 if not _SKILL_DIR.is_dir():

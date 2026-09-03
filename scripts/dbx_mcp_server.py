@@ -18,11 +18,16 @@ server 常驻内存，带 **连接池**与**表结构缓存**，替代工作流�
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 # ── 导入 dbx_connector（技能目录为单一实现来源；找不到时回退到脚本同目录） ──
-_SKILL_DIR = Path.home() / ".dsh" / "skills" / "db-extraction"
+# 查找顺序：DSH_HOME（桌面壳/打包版用户数据根）> 旧 ~/.dsh > 脚本同目录。
+_dsh_home = os.environ.get("DSH_HOME")
+_SKILL_DIR = Path(_dsh_home) / "skills" / "db-extraction" if _dsh_home else None
+if not _SKILL_DIR or not _SKILL_DIR.is_dir():
+    _SKILL_DIR = Path.home() / ".dsh" / "skills" / "db-extraction"
 if not _SKILL_DIR.is_dir():
     _SKILL_DIR = Path(__file__).resolve().parent
 if str(_SKILL_DIR) not in sys.path:

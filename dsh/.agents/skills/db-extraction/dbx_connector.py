@@ -72,7 +72,8 @@ def find_bobo_root(start: str | None = None) -> Path | None:
     # 环境变量优先（在 BoBo/dsh 内运行或脚本指定时最稳）
     if _env("BOBO_ROOT"):
         p = Path(_env("BOBO_ROOT")).resolve()
-        if (p / "dbx-runtime").is_dir():
+        # 打包布局为 dbx（映射自 dbx-runtime），两种标记都认
+        if (p / "dbx-runtime").is_dir() or (p / "dbx").is_dir():
             return p
     # 从显式 start / 当前目录向上逐级找
     candidates: list[Path] = []

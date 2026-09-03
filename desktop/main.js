@@ -86,6 +86,9 @@ function setEnv() {
   // 它读取 %LOCALAPPDATA%\camoufox；把 LOCALAPPDATA 指到 payload 根部即可命中
   // 随包带上的 runtime/camoufox。开发模式不覆盖，继续用系统真实的缓存。
   if (!isDev) process.env.LOCALAPPDATA = projectRoot
+  // 打包后 DBX 数据目录由壳统一管理（BoBoData/dbx），注入环境变量，让
+  // dbx-mcp（Python 子进程）与 dbx-web 面板都能定位 dbx.db。
+  if (!isDev) process.env.DBX_DATA_DIR = path.join(dataRoot, 'dbx')
 }
 
 /**
@@ -110,6 +113,26 @@ function fixVenvPython() {
     fs.writeFileSync(cfg, content, 'utf8')
   } catch (err) {
     /* 写入失败不影响启动；采集时若 venv 异常会另有提示 */
+  }
+}
+
+/**
+ * 首启把随包内置技能（runtime/skills）按需落到 DSH_HOME/skills。
+ * 只补缺、不覆盖：用户自装/自改的技能保留；同名技能目录已存在则跳过。
+ */
+function seedSkills() {
+  const src = path.join(projectRoot, 'skills')
+  const targetRoot = path.join(process.env.DSH_HOME || '', 'skills')
+  if (!fs.existsSync(src) || !targetRoot) return
+  try {
+    for (const name of fs.readdirSync(src)) {
+      const from = path.join(src, name)
+      const to = path.join(targetRoot, name)
+      if (!fs.statSync(from).isDirectory()) continue
+      if (!fs.existsSync(to)) fs.cpSync(from, to, { recursive: true })
+    }
+  } catch (err) {
+    console.warn(`[seedSkills] 内置技能复制失败（不影响启动）: ${err.message}`)
   }
 }
 
@@ -145,7 +168,9 @@ function ensureDeps() {
     depLog.write(`\n[first-run] pnpm ${extraArgs.join(' ')} in ${dshDir}\n`)
     const child = spawn(nodeBin, [pnpmScript, ...extraArgs], {
       cwd: dshDir,
-      env: { ...process.env, BOBO_ROOT: projectRoot },
+      // 关闭 pnpm 的「按 packageManager 字段自切版本」：捆绑的 pnpm 与 store/cache
+      // 版本一致，避免目标机离线时为了切到另一版本而去下载。
+      env: { ...process.env, BOBO_ROOT: projectRoot, npm_config_manage_package_manager_versions: 'false' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     if (child.stdout) child.stdout.pipe(depLog)
@@ -245,6 +270,7 @@ function killChildren() {
 app.whenReady().then(async () => {
   setEnv()
   fixVenvPython()
+  seedSkills()
   // 1) 立即显示启动进度窗口：双击图标马上有反馈，不再“无反应”。
   win = new BrowserWindow({
     width: 420,
