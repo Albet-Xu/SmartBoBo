@@ -23,7 +23,7 @@ import requests
 DEFAULT_URL = "https://news.qq.com/rain/a/20260902A0A6SY00"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-OUT_DIR = Path(__file__).resolve().parent.parent / "data"   # 项目根 data/
+OUT_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "news.qq.com"   # 项目根 data/<站点键>/
 TIMEOUT = 20
 RETRIES = 3
 

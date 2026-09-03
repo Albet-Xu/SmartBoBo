@@ -43,9 +43,9 @@
 
       ## 三、抓取样品页了解页面结构
 
-      1. 抓取一个**样品页**了解页面结构。优先查看 `crawl_script/` 是否已有匹配该网址类型的逆向脚本；若有，可先运行其拿一份样品（数据落 `{{cwd}}/data/`）。否则用 `crawl_fetch`（默认 camoufox，可指定 scrapling / crawl4ai）抓一个样品，保存到 `{{cwd}}/data/`。
+      1. 抓取一个**样品页**了解页面结构。优先查看 `crawl_script/<站点键>/` 是否已有匹配该网址类型的逆向脚本；若有，可先运行其拿一份样品（数据落 `{{cwd}}/data/<站点键>/`）。否则用 `crawl_fetch`（默认 camoufox，可指定 scrapling / crawl4ai）抓一个样品，**传 `saveDir=<工作区绝对路径>/data/<站点键>`**，保存到 `{{cwd}}/data/<站点键>/`。
       2. 阅读样品内容，**枚举该网页可提供的信息点**（标题、正文、列表项、价格、日期、来源链接、图片等），记录每条信息的样例值。同类型网址结构一致时，只需侦察一个样品即可。
-      3. 记录是否存在匹配的 `crawl_script/` 逆向脚本（存在则留到批量采集阶段优先调用）、以及样品数据文件路径。
+      3. 记录是否存在匹配的 `crawl_script/<站点键>/` 逆向脚本（存在则留到批量采集阶段优先调用）、以及样品数据文件路径。
 
       ## 四、核对字段满足度 & 补空值/固定值，并选定采集输出格式
 
@@ -54,20 +54,30 @@
       3. 把最终字段映射整理给用户**再确认一次**；当用户对采集的字段没有问题时，才进入写脚本阶段。
       4. **选定采集输出格式 source_format**（与 crawl_fetch 的 outputFormat 一致），按入库字段的提取需求选择：常规纯文本字段（标题/正文/简介）或三种格式皆可 → `md`（默认）；需精确选择器定位 / 取链接(@href) / 嵌套结构化字段 → `html`；按块/容器逐块取文本 → `skeleton`。**三种格式都能满足时选默认 md。**
 
-      ## 五、写提取入库脚本（复用模板，省 token）
+      ## 五、写提取入库脚本（复用模板，省 token；按站点键归类）
 
       1. 检查当前工作区 `extraction_scripts/` 是否存在；不存在则用文件系统工具创建。
-      2. 先读 `extraction_scripts/index.md`（不存在视为空）：若已有"同一网址类型 → 同一目标表 → 同 source_format"的脚本，直接复用（跳到批量入库），不再重新生成。
-      3. 否则加载 `db-extraction` 技能，把 `extraction_template.py` 复制为 `{{cwd}}/extraction_scripts/<名称>.py`，**只填写 `# ⛏️ GEN-CUSTOM` 定制区**：连接名、目标表、`dbx_data_dir`（`<BoBo根目录>/dbx-runtime/data`）、`source_format`（第 4 步选定的格式）、去重键、固定值、`extract_rows(text, source_format)`（先用 `parse_source(text, source_format)` 取取值块，再按确认的映射把该网站采集结果拆成记录）。
-      4. 在 `index.md` 追加一行登记：网址类型、目标表、source_format、脚本名。
-      5. 通用骨架（读数据、取字段、连库、UPSERT、预览、CLI）全部来自模板，不要重写。
+      2. **站点键** = 目标域名去掉 `www.`（如 `news.qq.com`，与采集脚本 SITE_KEY 一致）。先读 `extraction_scripts/index.md`（不存在视为空）：若已有"同站点键 → 同一目标表 → 同 source_format"的脚本，直接复用（跳到批量入库），不再重新生成。
+      3. 否则加载 `db-extraction` 技能，把 `extraction_template.py` 复制为 `{{cwd}}/extraction_scripts/<站点键>/<名称>.py`（同目录复制 `dbx_connector.py`），**只填写 `# ⛏️ GEN-CUSTOM` 定制区**：`site`（站点键）、连接名、目标表、`dbx_data_dir`（`<BoBo根目录>/dbx-runtime/data`）、`source_format`（第 4 步选定的格式）、去重键、固定值、`extract_rows(text, source_format)`（先用 `parse_source(text, source_format)` 取取值块，再按确认的映射把该网站采集结果拆成记录）。
+      4. 在 `index.md` **追加**一行登记：站点键、目标表、source_format、脚本名、去重键（不覆盖已有行）。
+      5. 通用骨架（读数据、取字段、连库、UPSERT、预览、CLI、增量）全部来自模板，不要重写。
 
-      ## 六、批量采集与入库（采集与入库分离；只写目标表；无重复入库：去重/更新）
+      ## 六、批量采集与入库（采集与入库分离；只写目标表；无重复入库：去重/更新；按站点键归类）
 
-      1. **批量来源**：大批量网址/数据可以是——用户输入里给的一批 URL、一个**网址清单文件**（每行一个 URL）、或一个已抓好的 `data/` 目录。用户输入外的批量清单，按用户给的路径读取。
-      2. **采集（落数据）**：对清单里的每个网址，优先运行匹配的 `crawl_script/` 逆向脚本，否则用 `crawl_fetch` **按引擎顺序降级**（camoufox → 失败/超时自动改 scrapling → 再失败改 crawl4ai → 全失败再报告），并带 **`outputFormat=<source_format>`**（与提取脚本 CONFIG.source_format 一致，保证采集落盘格式等于提取脚本读取格式），把同类型网址的采集结果统一存到 `{{cwd}}/data/`。
-      3. **入库（调脚本）**：调用（或复用）提取脚本批量 UPSERT 入库：`python <脚本> --data {{cwd}}/data`（指向收集好同类型数据的目录，脚本会遍历其中文件提取并写入目标表）。
+      1. **批量来源**：大批量网址/数据可以是——用户输入里给的一批 URL、一个**网址清单文件**（每行一个 URL）、或一个已抓好的 `data/<站点键>/` 目录。用户输入外的批量清单，按用户给的路径读取。
+      2. **采集（落数据）**：对清单里的每个网址，优先运行匹配的 `crawl_script/<站点键>/` 逆向脚本，否则用 `crawl_fetch` **按引擎顺序降级**（camoufox → 失败/超时自动改 scrapling → 再失败改 crawl4ai → 全失败再报告），并带 **`outputFormat=<source_format>`**（与提取脚本 CONFIG.source_format 一致，保证采集落盘格式等于提取脚本读取格式）与 **`saveDir=<工作区绝对路径>/data/<站点键>`**，把同类型网址的采集结果统一存到 `{{cwd}}/data/<站点键>/`。
+      3. **入库（调脚本）**：调用（或复用）提取脚本批量 UPSERT 入库：`python <脚本> --data {{cwd}}/data/<站点键>`（指向收集好同类型数据的目录，脚本会遍历其中文件提取并写入目标表）。
       4. **预览与写库**：正式写库前先 `--dry-run` 展示待写入行给用户确认；确认后运行脚本，**只向目标表写入**，按表主键/唯一键 UPSERT（已存在则更新、不存在则插入），实现**无重复入库（去重/更新）**。无唯一键且用户未指定去重键时回退为追加插入并在汇报里说明；汇报插入/更新条数、目标表、脚本路径。
+
+      ## 七、增量更新（客户续采/补采，省 token）
+
+      当用户输入含「增量 / 补采 / 续采 / 更新 / 最新数据」等关键词，且目标站点之前已采集过时，**不重新触发第一到六阶段**，直接走增量流程：
+
+      1. **定位现状**：读 `crawl_script/index.md` 与 `extraction_scripts/index.md`、`data/<站点键>/manifest.json` 确认已有脚本与历史状态；未命中站点键或脚本缺失时，按正常工作流先建脚本。
+      2. **硬红线（省 token 关键）**：增量更新**禁止**重新读取历史 data 文件、**禁止** `describe-table` / 整表 SELECT、**禁止**重新逐字段询问字段含义；字段映射与去重键一律以 `extraction_scripts/<站点键>/` 现有脚本内 CONFIG 为准；也不重新逆向（脚本报错时才检查失败样本定位问题）。
+      3. **采集增量**：运行 `python crawl_script/<站点键>/<脚本名>.py --incremental`（只抓新增或内容变化，自动更新 manifest）；如采集脚本不支持增量则重新按模板生成。
+      4. **入库增量**：`python extraction_scripts/<站点键>/<脚本名>.py --incremental --dry-run` 预览（只显示新增/变化行）→ 用户确认 → `python <脚本> --incremental` 正式入库（成功回写 manifest，下次自动跳过未变化的文件）。
+      5. **汇报**：新增/更新/跳过条数、目标表、脚本路径；全程模型只跑脚本并汇报 diff，不通读历史数据。
 
       ## 交互与汇报风格
 
@@ -123,8 +133,8 @@
   config:
     serverName: dbx
     transport: stdio
-    command: E:/SmartBoBo/BoBo/.venv/Scripts/python.exe
-    args: ['E:/SmartBoBo/BoBo/scripts/dbx_mcp_server.py']
+    command: E:/SmartBoBo/.venv/Scripts/python.exe
+    args: ['E:/SmartBoBo/scripts/dbx_mcp_server.py']
     cwd: !!js process.cwd()
 
 # ── 逆向经验记忆库（MCP，只读实例）──────────────────────────────────────────────

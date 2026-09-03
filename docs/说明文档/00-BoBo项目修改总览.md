@@ -132,6 +132,22 @@ BoBo 是一个智能采集平台，基于 DeepSeek Harness 构建，集成了多
 - `~/.dsh/settings.yaml` - skill-library 登记 reverse-experience
 - `BoBo/bobo-data/reverse-experience/` - 经验数据目录（MD 日志 + registry，gitignore）
 
+### 2.8 目录化归类 + Camoufox 默认 + 增量更新（manifest）
+
+**文档位置**: `功能实现/31-目录化归类与增量更新优化操作指南.md`
+
+**修改内容**:
+- 采集产物按站点键（域名去 www.）归类：`data/<站点键>/`、`crawl_script/<站点键>/`、`extraction_scripts/<站点键>/`，顶层 `index.md` 登记复用；三个模式（采集/逆向/工作流）persona 统一此规则（`crawl_fetch` 传 `saveDir`）。
+- 逆向/工作流生成的需要浏览器能力的爬虫代码默认内置 **camoufox**（模板 `render_html` 内建），禁用 selenium/原生 playwright。
+- 增量更新：每站点 `data/<站点键>/manifest.json` 为共享状态源，采集/提取脚本各带 `--incremental`（只处理新增/变化），工作流 persona 新增「七、增量更新」分支与省 token 红线。
+- 修复工作流预设 `mcp-dbx` 失效路径 `E:/SmartBoBo/BoBo/...` → `E:/SmartBoBo/...`；补装并登记 `reverse-crawler` 技能。
+
+**关键文件**:
+- `dsh/.agents/skills/reverse-crawler/{crawl_template.py,SKILL.md}`（+ 用户级副本补装）
+- `dsh/.agents/skills/db-extraction/{extraction_template.py,SKILL.md}`（+ 用户级副本同步）
+- `dsh/apps/cli/config/agent-presets/{crawl,reverse,workflow}/agent.cordis.yml`
+- `~/.dsh/settings.yaml`、`crawl_script/index.md`（新建）
+
 ## 3. 文档结构
 
 ```

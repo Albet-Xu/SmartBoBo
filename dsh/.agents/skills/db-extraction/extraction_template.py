@@ -3,30 +3,35 @@
 提取入库脚本模板（db-extraction 技能提供）—— 通用骨架可复用，勿重写。
 
 生成脚本时：
- 1. 本文件复制为  <工作区>/extraction_scripts/<名称>.py，并把同目录的 `dbx_connector.py`
+ 1. 本文件复制为  <工作区>/extraction_scripts/<站点键>/<名称>.py，并把同目录的 `dbx_connector.py`
     一并复制过来（脚本导入它读写数据库）。
- 2. 只修改标有 `# ⛏️ GEN-CUSTOM` 的区域：CONFIG（连接/目标表/输入/source_format/去重键/固定值）
+ 2. 只修改标有 `# ⛏️ GEN-CUSTOM` 的区域：CONFIG（site/连接/目标表/输入/source_format/去重键/固定值）
     与 `extract_rows()`（本网站特有的解析逻辑）；其余保持不变。
  3. 运行方式（建议用 BoBo 的 .venv python，已含 pymysql/psycopg 与 lxml）：
        python <名称>.py --dry-run                # 预览将要写入的行（回显给用户确认）
        python <名称>.py                          # 正式入库（UPSERT 去重/更新）
-   可选参数：--conn/--table/--data/--unique/--limit/--input-format 会覆盖 CONFIG 对应项。
+       python <名称>.py --incremental            # 增量：只处理 manifest 中"新采集/内容变化"的文件
+       python <名称>.py --incremental --dry-run  # 增量预览（只显示新增/变化行）
+   可选参数：--conn/--table/--data/--unique/--limit/--input-format/--site/--manifest 会覆盖 CONFIG 对应项。
  4. 输出统一为"预览行 JSON + 插入/更新条数"，不做静默失败。
+
+站点归类与增量（与 reverse-crawler 模板配合）：
+ - 采集数据按站点落在 <工作区>/data/<站点键>/；本脚本默认读 <工作区>/data/<站点键>/（CONFIG.site 指定）。
+ - 采集脚本每次落盘会维护 data/<站点键>/manifest.json（每条记录含 file / file_hash），
+   本脚本 --incremental 用它跳过"已入库且内容未变化"的文件，只处理新增/变化，省 token、少碰库。
+ - UPSERT 本身按唯一键去重/更新，是全量安全兜底；--incremental 只做"跳过没变的"提速。
 
 采集输出格式 source_format（与工作流采集落盘的 outputFormat 对应，必须一致）：
  - "md"（默认）：Markdown，适合标题 / 正文 / 简介等常规纯文本字段。
  - "html"：渲染后 HTML，适合需要用选择器精确定位 / 取链接(href) / 嵌套结构化字段。
  - "skeleton"：块级骨架（每行 `CSS路径 -> 文本`），适合按块 / 容器逐块取文本。
  工作流里按"入库字段的提取需求"选定；字段三种格式都可以时选默认 md。
-
-读取的输入（采集数据）默认来自当前工作区 data/ 里 `crawl_fetch`（按 source_format 输出）或
-逆向脚本落盘的 Markdown / HTML / 骨架文本；`extract_rows()` 负责把文本拆成一条条记录
-（dict，键=数据库字段名）。
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -45,6 +50,8 @@ from dbx_connector import (
 # ⛏️ GEN-CUSTOM —— 目标定制区（生成脚本时只改这里）───────────────────────────
 
 CONFIG: dict = {
+    # 站点键 = 域名去 www.（如 "news.qq.com"）：定位 data/<站点键>/ 与 manifest.json
+    "site": "",
     # DBX 中已保存的连接名（用 dbx_connector.py list-connections 查看）
     "conn": "MySQL_tloz",
     # 目标表名
@@ -166,12 +173,40 @@ def _dedup(rows: list[dict], keys: list[str]) -> list[dict]:
     return list(seen.values())
 
 
+# ── 通用：增量状态（manifest.json，与采集脚本共享）────────────────────────
+
+def hash_text(text: str) -> str:
+    """内容指纹（16 位 sha256），与采集脚本同一算法。"""
+    return hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()[:16]
+
+
+def default_manifest_path(cwd: Path, site: str) -> Path:
+    """默认 manifest：<工作区>/data/<站点键>/manifest.json（采集脚本维护）。"""
+    return cwd / "data" / (site or "_") / "manifest.json"
+
+
+def load_manifest(p: Path) -> dict:
+    if p.is_file():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 — 损坏则重建
+            pass
+    return {"site": "", "updated_at": "", "items": []}
+
+
+def save_manifest(p: Path, manifest: dict) -> None:
+    manifest["updated_at"] = __import__("time").strftime("%Y-%m-%d %H:%M:%S")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 # ── 通用：CLI ───────────────────────────────────────────────────────────────
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="把采集数据按字段抽取后 UPSERT 入库（去重/更新）。")
+    p = argparse.ArgumentParser(description="把采集数据按字段抽取后 UPSERT 入库（去重/更新，支持增量）。")
     p.add_argument("--conn", default=CONFIG.get("conn"), help="DBX 连接名")
     p.add_argument("--table", default=CONFIG.get("table"), help="目标表名")
+    p.add_argument("--site", default=CONFIG.get("site") or "", help="站点键（定位 data/<site>/ 与 manifest）")
     p.add_argument("--data", default=CONFIG.get("input") or "", help="输入：文件 / 通配(*.md) / 目录(遍历其中 md/txt/html)")
     p.add_argument("--data-dir", default=CONFIG.get("data_dir") or "data",
                    help="URL 清单模式下的已抓数据目录（默认 data）")
@@ -182,6 +217,9 @@ def build_parser() -> argparse.ArgumentParser:
                    choices=["md", "html", "skeleton"],
                    help="采集源格式 md/html/skeleton（覆盖 CONFIG.source_format；须与采集落盘格式一致）")
     p.add_argument("--unique", default="", help="逗号分隔的去重键（覆盖 CONFIG.unique）")
+    p.add_argument("--incremental", action="store_true",
+                   help="增量：对照 data/<site>/manifest.json，只处理新采集/内容变化的文件")
+    p.add_argument("--manifest", default="", help="manifest 路径（缺省 data/<site>/manifest.json）")
     p.add_argument("--limit", type=int, default=0, help="最多处理前 N 条（0=全部）")
     p.add_argument("--dry-run", action="store_true", help="只预览行数据，不写库")
     p.add_argument("--json-out", action="store_true", help="dry-run 输出为 JSON")
@@ -228,12 +266,32 @@ def read_url_list(path: str) -> list[str]:
     return out
 
 
+def select_incremental(inputs: list[Path], manifest: dict) -> tuple[list[Path], int]:
+    """增量筛选：只保留 manifest 中"文件内容较上次入库发生了变化"或"从未入库过"的文件。
+
+    判定规则：manifest 条目按"落盘文件名"匹配；若条目存在且 extracted_hash == file_hash
+    （提取后的内容指纹与采集落盘一致）→ 已入库且未变化，跳过。
+    返回 (待处理文件, 跳过的数量)。
+    """
+    by_file = {it.get("file"): it for it in manifest.get("items", []) if it.get("file")}
+    todo: list[Path] = []
+    skipped = 0
+    for fp in inputs:
+        item = by_file.get(fp.name)
+        if item and item.get("extracted_hash") and item.get("extracted_hash") == item.get("file_hash"):
+            skipped += 1
+            continue
+        todo.append(fp)
+    return todo, skipped
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     cwd = Path.cwd()
 
     conn_name = args.conn
     table = args.table
+    site = (args.site or CONFIG.get("site") or "").strip()
     source_format = (args.input_format or (CONFIG.get("source_format") or "md")).strip().lower()
     unique = [k.strip() for k in (args.unique or ",".join(CONFIG.get("unique", []) or [])).split(",") if k.strip()]
 
@@ -253,6 +311,18 @@ def main(argv: list[str] | None = None) -> int:
     if not inputs:
         print(f"错误: 没有找到待入库数据（--data/--data-dir 下无 .md/.txt/.html）。", file=sys.stderr)
         return 1
+
+    # 增量：对照 manifest 跳过已入库且未变化的文件
+    manifest: dict = {"site": site, "updated_at": "", "items": []}
+    manifest_file = Path(args.manifest) if args.manifest else default_manifest_path(cwd, site)
+    if args.incremental:
+        manifest = load_manifest(manifest_file)
+        inputs, skipped_cnt = select_incremental(inputs, manifest)
+        if skipped_cnt:
+            print(f"增量：跳过已入库且未变化的 {skipped_cnt} 个文件，待处理 {len(inputs)} 个。")
+        if not inputs:
+            print("增量：没有需要入库的新增/变化数据。")
+            return 0
 
     # 定位 DBX 连接
     if args.dbx_data_dir:
@@ -312,6 +382,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"入库 {table}（去重键 {keys or '取其主键/追加'}），{len(rows_out)} 条 ...")
         result = upsert_rows(profile, table, rows_out, unique_keys=keys or None)
         print(f"完成：插入 {result['inserted']} 条，更新 {result['updated']} 条。")
+
+        # 写入成功后回写 manifest：标记"已入库 + 内容指纹"，下次增量可跳过
+        if args.incremental:
+            by_name = {fp.name: fp for fp in inputs}
+            by_file = {it.get("file"): it for it in manifest.get("items", []) if it.get("file")}
+            for name, fp in by_name.items():
+                text = fp.read_text(encoding="utf-8", errors="replace")
+                item = by_file.get(name)
+                if item is None:
+                    item = {"url": "", "title": "", "file": name}
+                    manifest.setdefault("items", []).append(item)
+                item["extracted_at"] = __import__("time").strftime("%Y-%m-%d %H:%M:%S")
+                item["file_hash"] = hash_text(text)
+                item["extracted_hash"] = hash_text(text)
+            save_manifest(manifest_file, manifest)
+            print(f"manifest 已更新: {manifest_file}")
         return 0
     except Exception as e:  # noqa: BLE001 — 顶层兜底，不静默失败
         print(f"入库失败: {e}", file=sys.stderr)

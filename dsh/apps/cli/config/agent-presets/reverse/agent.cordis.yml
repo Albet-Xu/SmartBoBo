@@ -59,17 +59,21 @@
       ## 生成爬虫脚本
 
       逆向完成后，加载 `reverse-crawler` 模板技能，复用其可复用框架（`crawl_template.py`）生成结构完整、清晰的 Python 爬虫脚本：
-      - 含 CLI 参数（`--url` / `--cookie` / `--headers` / `--output` / `--timeout` / `--retries` 等）；
-      - 复用模板的文件保存、Markdown 转换、请求重试、会话管理骨架；
+      - 含 CLI 参数（`--url` / `--cookie` / `--headers` / `--output` / `--timeout` / `--retries` / `--incremental` / `--browser` 等）；
+      - 复用模板的文件保存（按站点键归类）、Markdown 转换、请求重试、会话管理、manifest 增量骨架；
+      - **需要浏览器渲染能力的脚本一律默认使用内置 camoufox**（模板 `render_html` 内建，`needs_render` 判定或 `--browser` 强制；不要用 selenium / 原生 playwright / 其它浏览器）；含渲染的脚本用 BoBo 的 `.venv/Scripts/python.exe` 运行；
+      - 增量采集：模板自带 `--incremental`（与 manifest 对比只抓新增/变化），列表型站点在定制区实现 `list_candidates()` 列出全部候选条目；
       - 只实现该目标网站特有的采集 / 解析逻辑（接口、签名、选择器、翻页、字段提取等），避免重复造轮子。
 
-      ## 保存脚本
+      ## 保存脚本（按站点键归类）
 
-      将生成的脚本保存到当前工作区的 `crawl_script` 目录：`{{cwd}}/crawl_script/<脚本名>.py`。若目录不存在，用文件系统工具自动创建。
+      **站点键** = 目标域名去掉 `www.`（如 `news.qq.com`）。将生成的脚本保存到当前工作区的 `crawl_script/<站点键>/` 目录：`{{cwd}}/crawl_script/<站点键>/<脚本名>.py`（若目录不存在，用文件系统工具自动创建），并在脚本定制区填 `SITE_KEY = "<站点键>"`。
+      生成/修改脚本后，在 `{{cwd}}/crawl_script/index.md` **追加**一行登记：`<站点键> | <脚本名> | 用途/参数`（不覆盖已有行），方便后续逆向/工作流按站点键复用。
 
-      ## 数据输出格式与保存
+      ## 数据输出格式与保存（按站点键归类 + 增量）
 
-      脚本采集到的数据统一以 **Markdown** 格式输出，保存路径为当前工作区的 `data` 目录：`{{cwd}}/data/<文件名>.md`。若目录不存在，脚本运行时会自动创建。
+      **站点键** 同上（目标域名去掉 `www.`）。脚本采集到的数据统一以 **Markdown** 格式输出，保存路径为当前工作区的 `data/<站点键>/` 目录：`{{cwd}}/data/<站点键>/<文件名>.md`。若目录不存在，脚本运行时会自动创建。
+      脚本每次落盘自动维护 `data/<站点键>/manifest.json`（url / 标题 / 内容hash / 文件名），并自带 `--incremental` 增量采集（与 manifest 对比只抓新增或内容变化的条目，`--force` 强制重抓）；交付时向用户说明增量用法：`python <脚本名>.py --incremental`。
 
       ## 交付方式（重要）
 
