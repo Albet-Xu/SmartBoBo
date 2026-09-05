@@ -85,21 +85,25 @@
       - **执行 shell/命令前先向用户说明**"我将运行以下命令：…"，让用户看到你在做什么；涉及写数据库这类有副作用的动作前，必须给用户预览确认，不擅自写库。
       - **任何工具调用失败不要静默结束回合**：把错误原文（含英文报错）告诉用户，并给出可执行的下一步建议；若只是引擎/驱动问题，先按降级策略自愈再报错。
 
-      ## 逆向经验参考与升级（只读，固定）
+      ## 逆向经验参考与沉淀（固定）
 
-      本模式可**只读**访问逆向经验记忆库（RAG）：当批量采集遇到反爬、签名、登录态、验证码等逆向难点，或需要判断某个网址类型是否已有现成逆向方案时，调用 `mcp__reverse-memory-ro__search`（传目标域名 / 特征 / tags，如 js混淆、wasm加密、签名参数、行为风控、cloudflare）查询历史逆向经验作参考。
+      本模式可直接访问并写入逆向经验记忆库（RAG）：批量采集遇到反爬、签名、登录态、验证码等逆向难点时，先检索历史经验；就地完成逆向破解后，把自己的经验沉淀入库。
 
-      - 历史经验仅供启发思路，必须结合当前站点实测验证，**禁止照搬**。
-      - 本模式挂载的是**只读实例**：`mcp__reverse-memory-ro__save` / `feedback` / `cleanup` **不存在**，不要尝试写入或沉淀经验——经验沉淀只发生在逆向模式。想确认记忆库状态时调用 `mcp__reverse-memory-ro__stats`。
+      - 检索：调用 `mcp__reverse-memory-wf__search`（传目标域名 / 特征 / tags，如 js混淆、wasm加密、签名参数、行为风控、cloudflare）。历史经验仅供启发思路，必须结合当前站点实测验证，**禁止照搬**。
+      - 沉淀：逆向破解结束后调用 `mcp__reverse-memory-wf__save`。成功 / 失败案例**都要**按置信度评估——置信度 1-5 如实自评（只跑通一次 ≤2.0），**≥ 1.8 才入库**（本地 md + 向量库；失败案例侧重写踩坑教训），**< 1.8 直接放弃、不产生任何文件**；真实 Cookie / Token / 密钥必须打码，不写原文。
+      - 反馈：采纳过某条历史经验后，用 `mcp__reverse-memory-wf__feedback(<经验id>, "success"|"fail")` 让靠谱案例越用越靠前。
+      - 状态：需要确认记忆库是否正常时调用 `mcp__reverse-memory-wf__stats`。
 
-      ## 逆向升级链路（固定）
+      ## 逆向破解流程（就地执行，固定）
 
-      批量采集统一先走采集工具：`crawl_fetch`（唯一引擎 camoufox）。采集失败时，工具会自动重启长驻浏览器服务重试一次。当**重试后仍失败**，且失败特征命中反爬（412 / 403 / 验证码 / JS 混淆或逆向 SDK（如 webmssdk / X-Bogus / a_bogus）/ 动态 cookie / 登录态校验）时：
+      批量采集统一先走采集工具：`crawl_fetch`（唯一引擎 camoufox）。采集失败时，工具会自动重启长驻浏览器服务重试一次。当**重试后仍失败**，且失败特征命中反爬（412 / 403 / 验证码 / JS 混淆或逆向 SDK（如 webmssdk / X-Bogus / a_bogus）/ 动态 cookie / 登录态校验）时，**就地执行逆向破解，不要请用户切换模式**：
 
-      1. **停止自行换方案反复试**，不要在本模式内继续逆向解析。
-      2. 用 ask_user 明确请用户**在界面切换到「逆向模式」**（本模式不具备切换会话模式的能力），并随附交接信息：目标 URL、已尝试的引擎与报错摘要、观察到的反爬特征（SDK / 参数 / 混淆关键字）、失败样本文件路径。
-      3. 切换到逆向模式后，由逆向模式负责解析并**沉淀经验**（`reverse_memory_save` 只能在该模式下调用，本模式不可写）。沉淀规则：成功与失败案例**都要**按置信度评估——置信度 ≥ 1.8 落 md + 入向量库（失败案例侧重写踩坑教训），< 1.8 直接放弃、不产生任何文件。
-      4. 逆向解决后，用户切回本模式继续批量采集；可再次用 `mcp__reverse-memory-ro__search` 检索刚沉淀的经验辅助后续采集。
+      1. 先用 `mcp__reverse-memory-wf__search` 检索相似历史案例，把命中结果当作**待验证假设**；
+      2. 获取页面与网络请求：用 crawl_fetch / 网页搜索 / shell 抓包等任一合适手段拿到页面 HTML 与关键 XHR/Fetch 请求；
+      3. 用 `mcp__js-reverse__*` 工具分析页面与接口：URL、参数、请求头、Cookie、签名 / 加密逻辑，识别 JS 中对参数的加密、混淆、时间戳签名等逆向难点，确认数据返回结构（JSON/HTML）与要提取的字段；
+      4. 结合已安装的爬虫 / 网页逆向相关 skills 与内置模板技能 `reverse-crawler` 选稳定方案；遇到需要登录态 / 验证码 / 凭证等必要信息时用 ask_user 向用户索取；
+      5. 破解成功后，按「逆向经验参考与沉淀」规则调用 `mcp__reverse-memory-wf__save` 沉淀经验（成功 / 失败都按 ≥ 1.8 评估）；
+      6. 回到批量流程：写爬取脚本并入库（复用 db-extraction 模板脚本），完成采集与入库。
 
       ## 代理模式（固定）
 
@@ -146,21 +150,37 @@
     args: ['../scripts/dbx_mcp_server.py']
     cwd: !!js process.cwd()
 
-# ── 逆向经验记忆库（MCP，只读实例）──────────────────────────────────────────────
-# 工作流模式只读访问逆向经验：env REVERSE_MEMORY_READONLY=1 时服务端不注册
-# save/feedback/cleanup 写工具（硬限制，非仅提示词约束）。
-# serverName 独立为 reverse-memory-ro：与逆向模式的读写实例（reverse-memory）
-# 避免同名工具注册冲突（双预设同挂 mcp__reverse-memory__* 会导致后挂载者
-# 工具注册失败被 contain 静默丢弃，表现为"切换模式后工具缺失"）。
+# ── 逆向经验记忆库（MCP，读写实例）──────────────────────────────────────────────
+# 工作流模式就地具备逆向破解能力，故挂**读写**实例：检索历史经验、破解成功后
+# 沉淀自己的经验（save/feedback/cleanup 均可调用）。
+# serverName 独立为 reverse-memory-wf：与逆向模式的实例（reverse-memory）区分
+# 命名空间——双预设同挂 mcp__reverse-memory__* 会导致后挂载者工具注册被 contain
+# 静默丢弃（表现为"切换模式后工具缺失"）。
 - id: mcp-reverse-memory
   name: '@deepseek-ai/dsh-mcp-client'
   config:
-    serverName: reverse-memory-ro
+    serverName: reverse-memory-wf
     transport: stdio
     command: ../.venv/Scripts/python.exe
     args: ['../scripts/reverse_memory_server.py']
-    env:
-      REVERSE_MEMORY_READONLY: '1'
+    cwd: !!js process.cwd()
+    toolCallTimeoutMs: 60000
+    reconnect:
+      enabled: true
+      initialDelayMs: 500
+      maxDelayMs: 30000
+      maxAttempts: 10
+
+# ── 网页逆向 MCP（js-reverse，就地逆向用）───────────────────────────────────────
+# 就地逆向：采集失败进入逆向分析时，用 js-reverse 分析页面与接口（URL/参数/
+# 请求头/Cookie/签名/混淆），与逆向模式同一套工具。
+- id: mcp-js-reverse
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: js-reverse
+    transport: stdio
+    command: npx
+    args: [js-reverse-mcp]
     cwd: !!js process.cwd()
     toolCallTimeoutMs: 60000
     reconnect:
