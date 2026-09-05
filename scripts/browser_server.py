@@ -28,9 +28,13 @@
 """
 import argparse
 import asyncio
+import csv as _csv
 import json
+import os
+import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from camoufox import DefaultAddons
@@ -75,21 +79,154 @@ def parse_proxy(proxy_str: str | None) -> dict | None:
     return {'server': server}
 
 
+def _cleanup_stale_profile(profile_dir: str) -> None:
+    """清理持有指定 profile 的残留 camoufox 进程及其 stale 锁，让下次启动能重新拿到 profile。
+
+    长驻浏览器用共享的持久化 profile（`--profile <dir>`）。若上次实例没有按进程树清干净
+    （kill 只杀父进程、残留 camoufox 子进程仍占着 profile 单实例锁），后续任何以同一 profile
+    启动的 camoufox 都会立刻以 exitCode=0 退出——这是"camoufox 图标闪现但打不开/launch failed"
+    的根因。这里把仍以该 profile 运行的 camoufox 杀掉，并清掉遗留的 parent.lock，恢复可启动状态。
+    """
+    try:
+        resolved = os.path.abspath(profile_dir).lower()
+        pids = _camoufox_pids_matching(resolved)
+        for pid in pids:
+            try:
+                if os.name == 'nt':
+                    subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)],
+                                   capture_output=True, timeout=10, check=False)
+                else:
+                    subprocess.run(['kill', '-9', str(pid)], capture_output=True,
+                                   timeout=10, check=False)
+            except Exception:
+                pass
+        # 清掉 profile 遗留的单实例锁（进程被杀后可能残留）
+        for name in ('parent.lock', '.parentlock', 'lock'):
+            p = Path(profile_dir) / name
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
+        # 等待进程真正退出，避免"刚 kill 完还没释放"就立即重试
+        time.sleep(1.5)
+    except Exception:
+        # 清理是尽力而为；失败不阻断后续重试
+        pass
+
+
+def _camoufox_pids_matching(profile_abs_lower: str) -> list[int]:
+    """枚举命令行里含目标 profile 的 camoufox 进程 PID。
+
+    Windows 用 WMI（PID 与 CommandLine 需配对，不能逐行判断）获取；POSIX 用 ps 解析。
+    返回为空/失败时返回空列表（调用方按其"无可清理"处理）。
+    """
+    if os.name != 'nt':
+        try:
+            out = subprocess.run(['ps', '-eo', 'pid,args'], capture_output=True,
+                                 text=True, timeout=10).stdout or ''
+        except Exception:
+            return []
+        pids = []
+        for line in out.splitlines():
+            if 'camoufox' in line and profile_abs_lower in line.lower():
+                parts = line.lstrip().split(None, 1)
+                if parts and parts[0].isdigit():
+                    pids.append(int(parts[0]))
+        return pids
+    try:
+        out = subprocess.run(
+            ['wmic', 'process', 'where', "name='camoufox.exe'", 'get', 'ProcessId,CommandLine',
+             '/format:csv'],
+            capture_output=True, text=True, timeout=10,
+        ).stdout or ''
+    except Exception:
+        return []
+    # CSV：wmic 输出里散落空行，先把真正非空的数据行取出来；随后首行作表头。
+    # 数据行形如 Node,CommandLine,ProcessId（CommandLine 可能含逗号，用 csv 解析避免误拆）。
+    rows = [r for r in _csv.reader(out.splitlines()) if r and any(c.strip() for c in r)]
+    pids = []
+    if not rows:
+        return pids
+    header = [h.strip().lower() for h in rows[0]]
+    try:
+        idx_pid = header.index('processid')
+        idx_cmd = header.index('commandline')
+    except ValueError:
+        return []
+    for row in rows[1:]:
+        if len(row) <= max(idx_pid, idx_cmd):
+            continue
+        cmdline = row[idx_cmd] or ''
+        if profile_abs_lower in cmdline.lower():
+            pid = (row[idx_pid] or '').strip()
+            if pid.isdigit():
+                pids.append(int(pid))
+    return pids
+
+
+# 单次浏览器启动的上限。camoufox 在 profile 被残留实例占用时会长时间阻塞（而不是立刻报错），
+# 必须用超时把这种"卡死"转为可恢复的失败，否则调用方会一直等待。正常情况下启动约几秒。
+_LAUNCH_TIMEOUT_S = 45.0
+
+
+async def _launch_context(proxy_cfg: dict | None, profile_dir: str):
+    """真正的上下文初始化（不重试）。"""
+    Path(profile_dir).mkdir(parents=True, exist_ok=True)
+    camo = AsyncCamoufox(
+        headless=True,
+        persistent_context=True,
+        user_data_dir=profile_dir,
+        exclude_addons=[DefaultAddons.UBO],
+        proxy=proxy_cfg,
+    )
+    ctx = await camo.__aenter__()
+    return camo, ctx
+
+
+async def _launch_bounded(proxy_cfg: dict | None, profile_dir: str):
+    """带超时启动浏览器上下文；超时视为失败（把阻塞转成可恢复异常）。"""
+    task = asyncio.create_task(_launch_context(proxy_cfg, profile_dir))
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=_LAUNCH_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        # 收回被取消任务的结果，避免“Future exception was never retrieved”噪音
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+        raise
+    except Exception:
+        if not task.done():
+            task.cancel()
+        raise
+
+
+async def _init_context(proxy_cfg: dict | None, profile_dir: str):
+    """初始化常驻上下文；任一启动失败（含超时）都按"共享 profile 可能被残留实例占用"清理后重试一次。
+
+    返回成功初始化的 (camo, ctx)。
+    """
+    try:
+        return await _launch_bounded(proxy_cfg, profile_dir)
+    except Exception:
+        # 尽力清理持有该 profile 的残留 camoufox 进程与 stale 锁，再重试一次。
+        _cleanup_stale_profile(profile_dir)
+        return await _launch_bounded(proxy_cfg, profile_dir)
+
+
 async def ensure_context(proxy_cfg: dict | None, profile_dir: str):
-    """惰性初始化常驻浏览器上下文；之后跨请求复用同一实例。"""
+    """惰性初始化常驻浏览器上下文；之后跨请求复用同一实例。
+
+    启动失败/超时（如共享 profile 被上次残留的 camoufox 占用，导致新实例卡住或立即退出）
+    时自动清理残留进程后重试一次——让长驻服务对上次未清干净的孤儿实例自愈。
+    """
     global _camo, _browser_context
     async with _browser_lock:
         if _browser_context is not None:
             return _browser_context
-        Path(profile_dir).mkdir(parents=True, exist_ok=True)
-        _camo = AsyncCamoufox(
-            headless=True,
-            persistent_context=True,
-            user_data_dir=profile_dir,
-            exclude_addons=[DefaultAddons.UBO],
-            proxy=proxy_cfg,
-        )
-        _browser_context = await _camo.__aenter__()
+        _camo, _browser_context = await _init_context(proxy_cfg, profile_dir)
         return _browser_context
 
 

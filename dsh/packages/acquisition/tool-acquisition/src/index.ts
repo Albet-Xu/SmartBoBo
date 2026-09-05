@@ -79,7 +79,10 @@ const BOBO_ROOT = findProjectRoot(dirname(fileURLToPath(import.meta.url)))
  * 保证所有消费方复用**同一个**长驻 camoufox 实例（不出现双浏览器）。
  */
 function deriveBrowserPort(root: string): number {
-  return 20000 + (crc32(Buffer.from(root)).readUInt32BE(0) % 20000)
+  // zlib.crc32 返回有符号 int32；>>>0 转回无符号，与 Python zlib.crc32 一致，从而与
+  // scripts/crawl_common.py::derive_browser_port 算出同一端口（复用同一浏览器实例）。
+  const u = crc32(Buffer.from(root)) >>> 0
+  return 20000 + (u % 20000)
 }
 
 /** 探测本机端口是否已有长驻浏览器服务（发 ping 等一行应答）。 */

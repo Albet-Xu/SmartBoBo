@@ -100,7 +100,7 @@
 
       1. 先用 `mcp__reverse-memory-wf__search` 检索相似历史案例，把命中结果当作**待验证假设**；
       2. 获取页面与网络请求：用 crawl_fetch / 网页搜索 / shell 抓包等任一合适手段拿到页面 HTML 与关键 XHR/Fetch 请求；
-      3. 用 `mcp__camoufox-debug__*` 工具分析页面与接口（先 `debug_navigate` 打开并保持会话，再 `debug_network` 定位接口、`debug_evaluate` 验签名/抠参数、`debug_cookies` 看动态 cookie、`debug_websocket` 看消息）：URL、参数、请求头、Cookie、签名 / 加密逻辑，识别 JS 中对参数的加密、混淆、时间戳签名等逆向难点，确认数据返回结构（JSON/HTML）与要提取的字段；分析完 `debug_close`；
+      3. 用 `mcp__camoufox-debug-wf__*` 工具分析页面与接口（先 `debug_navigate` 打开并保持会话，再 `debug_network` 定位接口、`debug_evaluate` 验签名/抠参数、`debug_cookies` 看动态 cookie、`debug_websocket` 看消息）：URL、参数、请求头、Cookie、签名 / 加密逻辑，识别 JS 中对参数的加密、混淆、时间戳签名等逆向难点，确认数据返回结构（JSON/HTML）与要提取的字段；分析完 `debug_close`；
       4. 结合已安装的爬虫 / 网页逆向相关 skills 与内置模板技能 `reverse-crawler` 选稳定方案；遇到需要登录态 / 验证码 / 凭证等必要信息时用 ask_user 向用户索取；
       5. 破解成功后，按「逆向经验参考与沉淀」规则调用 `mcp__reverse-memory-wf__save` 沉淀经验（成功 / 失败都按 ≥ 1.8 评估）；
       6. 回到批量流程：写爬取脚本并入库（复用 db-extraction 模板脚本），完成采集与入库。
@@ -171,13 +171,16 @@
       maxDelayMs: 30000
       maxAttempts: 10
 
-# ── 逆向调试 MCP（camoufox-debug，就地逆向用）────────────────────────────────
-# 就地逆向：采集失败进入逆向分析时，用 camoufox-debug 分析页面与接口（URL/参数/
+# ── 逆向调试 MCP（camoufox-debug-wf，就地逆向用）────────────────────────────
+# 就地逆向：采集失败进入逆向分析时，用 camoufox-debug-wf 分析页面与接口（URL/参数/
 # 请求头/Cookie/签名/混淆）。浏览器统一走 camoufox 长驻服务，不引入其它内核。
 - id: mcp-camoufox-debug
   name: '@deepseek-ai/dsh-mcp-client'
   config:
-    serverName: camoufox-debug
+    # serverName 独立为 camoufox-debug-wf：与逆向模式的实例（camoufox-debug）区分，
+    # 避免 mcp-client 在同一部署根里撞名（两个预设都挂载同一 camoufox_debug_server.py，
+    # 功能一致，只是工具前缀不同：mcp__camoufox-debug-wf__*）。
+    serverName: camoufox-debug-wf
     transport: stdio
     # 相对后端 cwd（dsh/）解析：跨机器可移植，`../` 指向 BoBo 根。
     command: ../.venv/Scripts/python.exe
