@@ -85,13 +85,21 @@
       - **执行 shell/命令前先向用户说明**"我将运行以下命令：…"，让用户看到你在做什么；涉及写数据库这类有副作用的动作前，必须给用户预览确认，不擅自写库。
       - **任何工具调用失败不要静默结束回合**：把错误原文（含英文报错）告诉用户，并给出可执行的下一步建议；若只是引擎/驱动问题，先按降级策略自愈再报错。
 
-      ## 逆向经验参考（只读，固定）
+      ## 逆向经验参考与升级（只读，固定）
 
-      本模式可**只读**访问逆向经验记忆库（RAG）：当批量采集遇到反爬、签名、登录态、验证码等逆向难点，或需要判断某个网址类型是否已有现成逆向方案时，调用 `mcp__reverse-memory__search`（传目标域名 / 特征 / tags，如 js混淆、wasm加密、签名参数、行为风控、cloudflare）查询历史逆向经验作参考。
+      本模式可**只读**访问逆向经验记忆库（RAG）：当批量采集遇到反爬、签名、登录态、验证码等逆向难点，或需要判断某个网址类型是否已有现成逆向方案时，调用 `mcp__reverse-memory-ro__search`（传目标域名 / 特征 / tags，如 js混淆、wasm加密、签名参数、行为风控、cloudflare）查询历史逆向经验作参考。
 
       - 历史经验仅供启发思路，必须结合当前站点实测验证，**禁止照搬**。
-      - 本模式挂载的是**只读实例**：`mcp__reverse-memory__save` / `feedback` / `cleanup` **不存在**，不要尝试写入或沉淀经验——经验沉淀只发生在逆向模式。
-      - 想确认记忆库状态时调用 `mcp__reverse-memory__stats`。
+      - 本模式挂载的是**只读实例**：`mcp__reverse-memory-ro__save` / `feedback` / `cleanup` **不存在**，不要尝试写入或沉淀经验——经验沉淀只发生在逆向模式。想确认记忆库状态时调用 `mcp__reverse-memory-ro__stats`。
+
+      ## 逆向升级链路（固定）
+
+      批量采集统一先走采集工具：`crawl_fetch` 默认 camoufox，失败自动降级 scrapling → crawl4ai。当**三个引擎全部失败**，且失败特征命中反爬（412 / 403 / 验证码 / JS 混淆或逆向 SDK（如 webmssdk / X-Bogus / a_bogus）/ 动态 cookie / 登录态校验）时：
+
+      1. **停止自行换方案反复试**，不要在本模式内继续逆向解析。
+      2. 用 ask_user 明确请用户**在界面切换到「逆向模式」**（本模式不具备切换会话模式的能力），并随附交接信息：目标 URL、已尝试的引擎与报错摘要、观察到的反爬特征（SDK / 参数 / 混淆关键字）、失败样本文件路径。
+      3. 切换到逆向模式后，由逆向模式负责解析并**沉淀经验**（`reverse_memory_save` 只能在该模式下调用，本模式不可写）。
+      4. 逆向解决后，用户切回本模式继续批量采集；可再次用 `mcp__reverse-memory-ro__search` 检索刚沉淀的经验辅助后续采集。
 
       ## 代理模式（固定）
 
@@ -141,10 +149,13 @@
 # ── 逆向经验记忆库（MCP，只读实例）──────────────────────────────────────────────
 # 工作流模式只读访问逆向经验：env REVERSE_MEMORY_READONLY=1 时服务端不注册
 # save/feedback/cleanup 写工具（硬限制，非仅提示词约束）。
+# serverName 独立为 reverse-memory-ro：与逆向模式的读写实例（reverse-memory）
+# 避免同名工具注册冲突（双预设同挂 mcp__reverse-memory__* 会导致后挂载者
+# 工具注册失败被 contain 静默丢弃，表现为"切换模式后工具缺失"）。
 - id: mcp-reverse-memory
   name: '@deepseek-ai/dsh-mcp-client'
   config:
-    serverName: reverse-memory
+    serverName: reverse-memory-ro
     transport: stdio
     command: ../.venv/Scripts/python.exe
     args: ['../scripts/reverse_memory_server.py']
