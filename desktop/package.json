@@ -94,6 +94,10 @@
         "to": "runtime/scripts"
       },
       {
+        "from": "staging/dbx-offline",
+        "to": "runtime/dbx-offline"
+      },
+      {
         "from": "../dbx-runtime",
         "to": "runtime/dbx",
         "filter": [
