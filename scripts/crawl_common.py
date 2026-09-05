@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """采集脚本共享工具：输出格式转换 + 统一命名落盘。
 
-三个引擎脚本（run_camoufox.py / run_scrapling.py / run_crawl4ai.py）共用本模块，
-避免 html2text 配置、文件名生成与落盘逻辑在三处重复漂移。
+采集脚本（run_camoufox.py）共享本模块，
+避免 html2text 配置、文件名生成与落盘逻辑在多处重复漂移。
 
 `--format` 爬取参数支持逗号分隔的多格式：一次抓取、多个派生产物（同一份渲染 HTML
 分别派生）。格式与扩展名：
@@ -243,7 +243,7 @@ def first_match(tree, selector: str, tag=None, ids=None, classes=None):
 def narrow_by_selector(full_html: str, selector: str) -> str:
     """取渲染后 HTML 中命中 selector 的第一处作为待转换片段；未命中回退整页完整文档。
 
-    三个引擎统一在这里切片（替代旧 camoufox 浏览器 locator / scrapling page.css 的分歧做法）。
+    通用切片逻辑（取代旧电脑端浏览器 locator 与 scrapling page.css 的分歧做法）。
     cssselect 可用时走标准 CSS selector；不可用时对 'tag#id.cls' / '#id' / '.cls' 做简易匹配。
     """
     if not selector:

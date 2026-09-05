@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""长驻 Camoufox 浏览器服务：让采集端（scrapling / crawl4ai / camoufox）共用同一个浏览器实例。
+"""长驻 Camoufox 浏览器服务：采集端（run_camoufox.py）唯一依赖的浏览器实例。
 
 背景：原先三个采集脚本（run_camoufox.py / run_scrapling.py / run_crawl4ai.py）各自拉起自己的浏览器，
 进程结束浏览器即销毁，无法满足"会话内常驻复用"。本服务把 Camoufox 提出来单独跑成一个长驻进程：

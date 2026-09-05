@@ -86,10 +86,6 @@
         "to": "runtime/.venv"
       },
       {
-        "from": "../engines",
-        "to": "runtime/engines"
-      },
-      {
         "from": "../scripts",
         "to": "runtime/scripts"
       },
@@ -107,7 +103,11 @@
       },
       {
         "from": "C:/Users/ausu/AppData/Local/camoufox",
-        "to": "runtime/camoufox"
+        "to": "runtime/camoufox",
+        "filter": [
+          "**/*",
+          "!**/browsers/official/152.0.4-beta.28-*/**"
+        ]
       },
       {
         "from": "../README.md",

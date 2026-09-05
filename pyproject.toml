@@ -8,15 +8,11 @@
 [project]
 name = "bobo"
 version = "0.1.0"
-description = "BoBo 智能采集平台：本地 Python 采集引擎环境（camoufox / scrapling / crawl4ai）"
+description = "BoBo 智能采集平台：本地 Python 采集引擎环境（camoufox 单引擎）"
 # 「环境容器」项目的 requires-python 选宽松值；实际解释器由 uv 与环境内依赖约束决定
 requires-python = ">=3.10"
 dependencies = [
-    # 采集引擎 —— 见 [tool.uv.sources] 映射到本地 engines/ 路径
-    # scrapling 的 StealthyFetcher 需要 fetchers 额外依赖（curl_cffi/playwright/patchright 等）
-    "scrapling[fetchers]",
-    "crawl4ai",
-    # 默认抗检测浏览器引擎（从 PyPI 安装）
+    # 采集引擎 —— 唯一引擎：Camoufox 抗检测浏览器（浏览器功能只走 camoufox）
     "camoufox>=0.5.5",
     # HTML 转 Markdown 工具
     "html2text>=2024.2.26",
@@ -33,11 +29,6 @@ dependencies = [
     "qdrant-client>=1.9",
 ]
 
-[tool.uv.sources]
-# 本地源码路径依赖（editable），映射到 engines/ 下的引擎源码
-scrapling = { path = "engines/scrapling" }
-crawl4ai  = { path = "engines/crawl4ai" }
-
 [dependency-groups]
 dev = [
     "pytest",
@@ -47,9 +38,8 @@ dev = [
 # 本项目只是“Python 环境容器”，本身不构建/分发任何 Python 包，
 # 标记为非 package（virtual project），只安装其依赖、不安装本包自身。
 package = false
-# 版本覆盖：camoufox 要求 playwright<1.61，而 scrapling[fetchers] 声明 >=1.61，
-# 二者在严格解析下冲突。实测 playwright 1.60 可同时满足两者（旧环境即如此），
-# 故以 override 统一到 <1.61，复现已验证可用的组合。
+# 版本覆盖：camoufox 要求 playwright<1.61（其运行时依赖的协议版本约束），
+# 以 override 固定已验证可用的组合。
 override-dependencies = [
     "playwright<1.61",
 ]

@@ -5,13 +5,13 @@
  * - 会话内由本插件按需拉起/常驻 `scripts/browser_server.py`（一个持有 camoufox 的
  *   长驻浏览器服务，排队复用同一 context），智能体/会话关闭（dispose）时关闭它；
  *   服务异常退出后由下一次采集自动重启。代理在服务（每次）启动时注入一次。
- * - 每次采集通过 `child_process` 调用 `BoBo/scripts/run_<engine>.py`
- *   （camoufox 默认 /scrapling/crawl4ai），脚本作为瘦客户端向浏览器服务取"渲染后的
+ * - 每次采集通过 `child_process` 调用 `BoBo/scripts/run_camoufox.py`（唯一引擎），
+ *   脚本作为瘦客户端向浏览器服务取"渲染后的
  *   完整文档"，再按 `outputFormat`（支持逗号分隔多格式）派生 html / md / skeleton 落盘
  *   （默认以 站点_标题_时间戳.<格式扩展名> 命名，不生成 .json），并把一行单行 JSON
  *   打到 stdout，这里解析后返回给智能体（`savedTo`/`status`/`preview`/`format`/`outputs`）。
- * - 三引擎共用同一浏览器与同一套 selector 切片 + 格式转换 + 落盘逻辑（crawl_common.py），
- *   engine 仅作为解析/输出方式选项保留。
+ * - 浏览器功能统一走 camoufox：引擎脚本与长驻浏览器服务共用同一套 selector 切片 +
+ *   格式转换 + 落盘逻辑（crawl_common.py）。
  * - 默认保存位置为当前工作区的 data 文件夹，除非用户明确指定其他位置。
  *
  * 装配方式见 `BoBo/patch/`（`- insert:` 注入 + `- id: webserver` 固定 7070 端口）。
@@ -226,14 +226,9 @@ export function apply(ctx: Context, config: Config): void {
         required: true,
         description: 'The target webpage URL to crawl, e.g. https://example.com.',
       },
-      engine: {
-        type: 'string',
-        // 可选：省略 required（required 只能为 true 或省略，不能写 false）
-        description: 'engine to use: "camoufox" (default, anti-detect browser) or "scrapling" / "crawl4ai".',
-      },
       selector: {
         type: 'string',
-        description: 'Optional CSS selector to narrow extraction (Scrapling). When present, only the first match is returned.',
+        description: 'Optional CSS selector to narrow extraction; when present, only the first match is returned.',
       },
       outputFormat: {
         type: 'string',
@@ -282,7 +277,6 @@ export function apply(ctx: Context, config: Config): void {
       },
     },
     async execute(args, exec) {
-      const engine = args.engine ?? 'camoufox'
       // 先校验再使用：outputFormat 支持逗号分隔多格式；剔除非预期值与重复项，空则回退 md
       const requested = args.outputFormat ?? 'md'
       const formats = requested.split(',')
@@ -366,7 +360,7 @@ export function apply(ctx: Context, config: Config): void {
       const serverAddr = `127.0.0.1:${await ensureServer(pythonBin, scriptsDir, proxyAddr)}`
 
       const buildScriptArgs = (addr: string): string[] => [
-        join(scriptsDir, `run_${engine}.py`),
+        join(scriptsDir, 'run_camoufox.py'),
         '--url', args.url,
         '--out', join(dataDir, outBase),
         '--format', format,
