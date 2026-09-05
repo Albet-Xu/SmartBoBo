@@ -24,6 +24,8 @@ import z from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
+import { createConnection } from 'node:net'
+import { crc32 } from 'node:zlib'
 import { dirname, join, resolve } from 'node:path'
 import { existsSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -71,6 +73,27 @@ function findProjectRoot(start: string): string | undefined {
 
 /** 本项目（BoBo 平台）根目录；据此定位 .venv / scripts / data，跨机器、跨平台可移植。 */
 const BOBO_ROOT = findProjectRoot(dirname(fileURLToPath(import.meta.url)))
+
+/**
+ * 浏览器服务端口：与 camoufox-debug 等调用方共用同一规则（crawl_common.derive_browser_port），
+ * 保证所有消费方复用**同一个**长驻 camoufox 实例（不出现双浏览器）。
+ */
+function deriveBrowserPort(root: string): number {
+  return 20000 + (crc32(Buffer.from(root)).readUInt32BE(0) % 20000)
+}
+
+/** 探测本机端口是否已有长驻浏览器服务（发 ping 等一行应答）。 */
+function probeBrowserServer(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = createConnection({ host: '127.0.0.1', port }, () => {
+      sock.write('{"op":"ping"}\n')
+      sock.setTimeout(2000, () => { sock.destroy(); resolve(false) })
+      sock.once('data', () => { sock.destroy(); resolve(true) })
+    })
+    sock.on('error', () => resolve(false))
+    sock.on('timeout', () => resolve(false))
+  })
+}
 
 /** Windows 用 .venv/Scripts/python.exe，Linux/macOS 用 .venv/bin/python。 */
 const PYTHON_SUBPATH = process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python'
@@ -164,10 +187,17 @@ export function apply(ctx: Context, config: Config): void {
   const ensureServer = async (pythonBin: string, scriptsDir: string, proxy?: string): Promise<number> => {
     if (serverChild && serverChild.exitCode === null && serverPort != null) return serverPort
     if (serverStarting) return serverStarting
+    // 派生端口上已有长驻服务（camoufox-debug 等拉起）→ 直接复用同一浏览器实例
+    const derived = BOBO_ROOT ? deriveBrowserPort(BOBO_ROOT) : 0
+    if (derived > 0 && (await probeBrowserServer(derived))) {
+      serverPort = derived
+      return derived
+    }
     serverStarting = (async () => {
       const child = spawn(pythonBin, [
         join(scriptsDir, 'browser_server.py'),
         ...(proxy ? ['--proxy', proxy] : []),
+        ...(derived > 0 ? ['--port', String(derived)] : []),
       ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
       serverChild = child
       const port = await new Promise<number>((resolve, reject) => {

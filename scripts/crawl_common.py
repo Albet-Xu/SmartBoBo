@@ -167,6 +167,7 @@ def write_output(out_path: str, content: str) -> None:
 # 再在本模块统一做 selector 切片 + html/md/skeleton 派生 + 落盘 + 组装回传 JSON，避免三处漂移。
 import json as _json
 import socket
+import zlib
 
 # 渲染默认参数（与服务端 browser_server.py 的 DEFAULT_* 保持一致）
 RENDER_TIMEOUT_MS = 120_000
@@ -204,6 +205,41 @@ def crawl_via_server(server: str, url: str, *, timeout_ms: int = RENDER_TIMEOUT_
                 if len(buf) > MAX_RESPONSE_BYTES:
                     break
         return _json.loads(buf.decode('utf-8'))
+    except (OSError, socket.timeout, _json.JSONDecodeError) as e:
+        raise ServerUnreachable(f'浏览器服务不可达({server}): {e}') from None
+
+
+def derive_browser_port(root: str) -> int:
+    """从 BoBo 根路径派生稳定端口（20000-39999）。
+
+    服务端与各调用方（tool-acquisition / 调试 MCP）用同一规则计算端口，从而复用
+    同一浏览器实例；不同安装目录得到不同端口，互不冲突。
+    """
+    return 20000 + (zlib.crc32(str(root).encode('utf-8')) % 20000)
+
+
+def send_cmd(server: str, req: dict, *, connect_timeout: float = 30.0,
+             recv_cap: int = MAX_RESPONSE_BYTES) -> dict:
+    """通用指令通道：向长驻 camoufox 服务发一行 JSON 指令，收一行 JSON 应答。
+
+    ``req`` 可含 ``op``（render / ping / debug_*），不可达时抛 ServerUnreachable。
+    """
+    host, _, port_s = server.rpartition(':')
+    if '://' in host:
+        host = host.split('://', 1)[1]
+    port = int(port_s)
+    try:
+        with socket.create_connection((host, port), timeout=connect_timeout) as sock:
+            sock.sendall((_json.dumps(req, ensure_ascii=False) + '\n').encode('utf-8'))
+            buf = bytearray()
+            while not buf.endswith(b'\n'):
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+                if len(buf) > recv_cap:
+                    break
+        return _json.loads(buf.decode('utf-8') or '{}')
     except (OSError, socket.timeout, _json.JSONDecodeError) as e:
         raise ServerUnreachable(f'浏览器服务不可达({server}): {e}') from None
 

@@ -1,6 +1,6 @@
 # The `reverse` agent preset: SmartBoBo 逆向模式。
 #
-# 核心行为：检测用户输入中的「采集/逆向/破解/爬取」关键词与网址 → 用 js-reverse 等
+# 核心行为：检测用户输入中的「采集/逆向/破解/爬取」关键词与网址 → 用 camoufox-debug 等
 # 网页逆向 MCP 工具分析与逆向目标网页/接口 → 遇到难点主动询问用户 → 复用模板技能
 # reverse-crawler 生成完整 Python 爬虫脚本，保存到当前工作区。
 #
@@ -30,7 +30,7 @@
       ## 网页逆向流程
 
       1. **获取页面与网络请求**：先用采集工具 / 网页搜索 / shell 抓包等任一合适手段获取目标页面 HTML 与关键的 XHR/Fetch 网络请求。
-      2. **使用 js-reverse 等网页逆向工具**：调用 `mcp__js-reverse__*` 系列 MCP 工具分析页面与接口——定位关键数据接口，分析其 URL、参数、请求头、Cookie、签名/加密逻辑，识别 JS 中对参数的加密、混淆、时间戳签名等逆向难点，确认数据返回结构（JSON/HTML）与要提取的字段。
+      2. **使用 camoufox-debug 等网页逆向工具**：调用 `mcp__camoufox-debug__*` 系列 MCP 工具分析页面与接口（先 `debug_navigate` 打开并保持会话，再用 `debug_network` 定位接口、`debug_evaluate` 验签名/抠参数、`debug_cookies` 看动态 cookie、`debug_websocket` 看消息，最后 `debug_close`）——定位关键数据接口，分析其 URL、参数、请求头、Cookie、签名/加密逻辑，识别 JS 中对参数的加密、混淆、时间戳签名等逆向难点，确认数据返回结构（JSON/HTML）与要提取的字段。
       3. **结合相关技能**：调用用户已安装的爬虫 / 网页逆向相关 skills，以及内置模板技能 `reverse-crawler`，选择合理、稳定的采集方案。
 
       ## 逆向经验记忆库（RAG 记忆增强，固定）
@@ -41,7 +41,7 @@
       2. **结束时必沉淀**：逆向任务结束（成功/失败/部分成功都要沉淀）时，按 `reverse-experience` 技能与 `log_template.md` 组织内容，调用 `mcp__reverse-memory__save` 入库。置信度 1-5 如实自评（只跑通一次 ≤2.0，同一方案多次验证才给高分）；**< 1.8 会被服务端直接丢弃、不留任何文件**。失败日志同样要存，写明试过什么无效、卡在哪。真实 Cookie / Token / 密钥必须打码，不写原文。
       3. **采纳后反馈**：参考过某条历史经验后，成功就调用 `mcp__reverse-memory__feedback(<经验id>, "success")`，失败调用 `mcp__reverse-memory__feedback(<经验id>, "fail")`——让靠谱案例越用越靠前，不靠谱的自动下沉。
       4. **状态确认**：需要确认记忆库是否正常时调用 `mcp__reverse-memory__stats`。
-      5. **手动接手（可选）**：工作流模式已自带就地逆向能力（含读写记忆库与 js-reverse）；但用户仍可能手动切到本模式深度破解（例如工作流就地逆向仍卡住）。接续已有上下文继续分析即可；**经验沉淀（save）在本模式完成逆向解析后进行**，产出可复用方案后返回批量流程。
+      5. **手动接手（可选）**：工作流模式已自带就地逆向能力（含读写记忆库与 camoufox-debug）；但用户仍可能手动切到本模式深度破解（例如工作流就地逆向仍卡住）。接续已有上下文继续分析即可；**经验沉淀（save）在本模式完成逆向解析后进行**，产出可复用方案后返回批量流程。
 
       ## 主动询问用户
 
@@ -117,17 +117,18 @@
       maxDelayMs: 30000
       maxAttempts: 10
 
-# ── 网页逆向 MCP（js-reverse）──────────────────────────────────────────────────
-# 随包自带（不再依赖 DSH 主目录覆盖层）；工作流预设同样挂载同一 server。
-- id: mcp-js-reverse
+# ── 逆向调试 MCP（camoufox-debug）────────────────────────────────────────────
+# 浏览器统一走 camoufox 长驻服务（不引入其它内核）；工作流预设同样挂载同一 server。
+- id: mcp-camoufox-debug
   name: '@deepseek-ai/dsh-mcp-client'
   config:
-    serverName: js-reverse
+    serverName: camoufox-debug
     transport: stdio
-    command: npx
-    args: [js-reverse-mcp]
+    # 相对后端 cwd（dsh/）解析：跨机器可移植，`../` 指向 BoBo 根。
+    command: ../.venv/Scripts/python.exe
+    args: ['../scripts/camoufox_debug_server.py']
     cwd: !!js process.cwd()
-    toolCallTimeoutMs: 60000
+    toolCallTimeoutMs: 120000
     reconnect:
       enabled: true
       initialDelayMs: 500
