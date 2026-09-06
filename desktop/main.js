@@ -137,6 +137,24 @@ function seedSkills() {
 }
 
 /**
+ * 首启把随包捆绑的 DBX 驱动运行时（runtime/dbx/data/agents：托管 JRE + 内置驱动 agent
+ * + state.json）按需落到 $DBX_DATA_DIR/agents，让 Kafka 等内置 agent 数据库在离线机器上
+ * 开箱可用。只补缺、不覆盖：用户已装驱动/已连过的目录保留。打包版执行，开发版 DBX
+ * 直接用默认数据目录（dbx-runtime/data），无需播种。
+ */
+function seedDbxDrivers() {
+  if (isDev) return
+  const src = path.join(dbxDir, 'data', 'agents')
+  const dest = path.join(dataRoot, 'dbx', 'agents')
+  if (!fs.existsSync(path.join(src, 'state.json'))) return // 无捆绑驱动则不播种
+  try {
+    if (!fs.existsSync(dest)) fs.cpSync(src, dest, { recursive: true })
+  } catch (err) {
+    console.warn(`[seedDbxDrivers] 驱动运行时播种失败（不影响启动）: ${err.message}`)
+  }
+}
+
+/**
  * 首次运行策略：安装包不带 node_modules 以瘦身，改用内置 Node+pnpm 就地重建。
  * pnpm 在没有符号链接权限的机器上会退回使用目录 junction（无需任何权限）。
  * 关键健壮性：
@@ -242,6 +260,7 @@ function launchDbx() {
     return
   }
   fs.mkdirSync(path.join(dataRoot, 'dbx'), { recursive: true })
+  seedDbxDrivers()
   dbxProc = spawn(dbxBin, [], {
     env: {
       ...process.env,
