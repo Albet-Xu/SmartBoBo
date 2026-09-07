@@ -162,14 +162,68 @@ function seedDbxDrivers() {
  *  - `--ignore-scripts`：跳过 esbuild/lefthook 等需联网下二进制的 postinstall，
  *    运行时已验证无需这些脚本产物也能正常起服务；
  *  - 失败自动用 `--no-frozen-lockfile` 重试一次。
- * 已装好（存在 node_modules/.pnpm）则直接返回；否则执行 pnpm install。
+ * 依赖「就绪」判据（根治“有 .pnpm、没顶层链接”的半成品与“升级复用旧依赖”两类故障）：
+ *   ① node_modules/.pnpm 存在（包已导入）；
+ *   ② 顶层关键包 tsx 可解析 —— 只建出 .pnpm 而顶层链接缺失（中断/不完整重建）时
+ *      判为不健康，pnpm 不会自行修补缺失链接，必须清空重装；
+ *   ③ 随包 pnpm-lock.yaml 的指纹与上次成功安装写下的标记一致 —— 同一目录覆盖升级
+ *      （新版盖旧版）会复用旧 node_modules，版本漂移时同样清空重装。
+ * 就绪后直接返回；否则执行 pnpm install（必要时先清空 node_modules）。
  * @returns whether dependencies are present（或已成功安装）。
  */
+function lockFingerprint() {
+  try {
+    const { createHash } = require('node:crypto')
+    return createHash('sha256')
+      .update(fs.readFileSync(path.join(dshDir, 'pnpm-lock.yaml')))
+      .digest('hex')
+      .slice(0, 16)
+  } catch {
+    return '' // lockfile 不可读：放弃指纹，仅以 .pnpm + tsx 判据兜底
+  }
+}
+
+const READY_MARK_NAME = '.bobo-ready'
+
+function readReadyMark() {
+  try {
+    return fs.readFileSync(path.join(dshDir, 'node_modules', READY_MARK_NAME), 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
+function writeReadyMark(fp) {
+  try {
+    fs.mkdirSync(path.join(dshDir, 'node_modules'), { recursive: true })
+    fs.writeFileSync(path.join(dshDir, 'node_modules', READY_MARK_NAME), fp, 'utf8')
+  } catch (err) {
+    console.warn(`[ensureDeps] 就绪标记写入失败（不影响本次启动）: ${err.message}`)
+  }
+}
+
 function ensureDeps() {
   const nm = path.join(dshDir, 'node_modules')
-  if (fs.existsSync(path.join(nm, '.pnpm'))) {
+  const havePnpm = fs.existsSync(path.join(nm, '.pnpm'))
+  const canaryOk = fs.existsSync(path.join(nm, 'tsx'))
+  const fp = lockFingerprint()
+  const fpOk = fp === '' || readReadyMark() === fp
+  const ready = havePnpm && canaryOk && (isDev || fpOk)
+  if (ready) {
     status('依赖已就绪')
     return Promise.resolve(true)
+  }
+  // 不健康：有 .pnpm 但顶层链接缺失（半成品），或依赖版本与随包 lockfile 不一致（升级残留）。
+  // pnpm 二次 install 不会修补，必须先清空 node_modules 再重建。
+  if (havePnpm) {
+    status(isDev
+      ? '检测到依赖不完整或版本不符，正在重新安装依赖…'
+      : '检测到依赖不完整或版本不符，正在重新离线重建…')
+    try {
+      fs.rmSync(nm, { recursive: true, force: true })
+    } catch (err) {
+      console.warn(`[ensureDeps] 清理旧依赖失败（继续尝试安装）: ${err.message}`)
+    }
   }
   const pnpmScript = isDev
     ? 'pnpm'
@@ -193,7 +247,11 @@ function ensureDeps() {
     })
     if (child.stdout) child.stdout.pipe(depLog)
     if (child.stderr) child.stderr.pipe(depLog)
-    child.on('close', (code) => { depLog.end(); resolve(code === 0) })
+    child.on('close', (code) => {
+      depLog.end()
+      if (code === 0 && fp !== '') writeReadyMark(fp)
+      resolve(code === 0)
+    })
     child.on('error', () => { depLog.end(); resolve(false) })
   })
   status(isDev ? '首次运行：正在安装依赖（走国内镜像）…' : '首次运行：正在从本地 store 离线重建依赖…')
