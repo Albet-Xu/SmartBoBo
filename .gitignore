@@ -34,3 +34,5 @@ release/
 desktop/release-*/
 dsh/msn_baxian_article.md
 bobo-data/
+# 内部说明手册（docs）仅本地保留，不随仓库对外公布
+docs/

@@ -51,17 +51,21 @@ user-invocable: true
 3. **抓样品页了解页面结构**：抓一个样品页（`crawl_fetch`，或先运行 `crawl_script/<站点键>/` 里已有的逆向脚本），阅读样品，**枚举该网页可提供的信息点**（标题/正文/列表/价格/日期/链接等）与样例值；同时记录 `crawl_script/<站点键>/` 是否已有匹配脚本。样品页抓取也用最终确认的 `outputFormat`（或先用 md 侦察，写脚本时再按 source_format 采集）。
 4. **核对字段满足度 & 补空值/固定值，并选定 source_format**：把第 2 步确认的每个字段逐一对照样品页，能提取的标记来源；**页面满足不了的字段逐个询问用户**：填 NULL 空值，还是给固定值（由用户给定）。整理最终字段映射给用户**再确认一次**；同时按上面"选择采集输出格式"一节选定 `source_format`（三种格式皆可时选 md）。确认无异议才进入写脚本。
 5. **写提取入库脚本（复用检查 + 生成）**：读 `extraction_scripts/index.md`，若已有"同站点键 + 同目标表 + 同 source_format"脚本 → 直接复用（跳到第 7 步）；否则复制 `extraction_template.py` 至 `extraction_scripts/<站点键>/<名称>.py`，同目录复制 `dbx_connector.py`；只改定制区：
-   - `CONFIG`：`site`（站点键）、`conn`（DBX 连接名）、`table`、`dbx_data_dir`（BoBo/dbx-runtime/data 绝对路径）、`input`/`data_dir`（data/<站点键> 目录）、`source_format`（第 4 步选定的格式）、`unique`（去重键）、`fixed_values`（用户确认的固定值）；
+   - `CONFIG`：`site`（站点键）、`conn`（DBX 连接名）、`table`、`dbx_data_dir`（BoBo/dbx-runtime/data 绝对路径）、`input`/`data_dir`（data/<站点键> 目录）、`source_format`（第 4 步选定的格式）、`unique`（去重键）、`fixed_values`（用户确认的固定值）、`allow_null_fields`（用户明确同意"此列留空为 NULL"的字段，写入库质量闸门放行）；
    - `extract_rows(text, source_format)`：按确认的映射（先 `parse_source(text, source_format)` 取块）把该网站采集结果拆成一条条记录（dict，键=数据库字段名）。
 6. **登记复用**：在 `extraction_scripts/index.md` 追加一行 `站点键 | 目标表 | source_format | 脚本名 | 去重键`。
 7. **批量采集与入库（采集与入库分离；只写目标表）**：
    - **批量来源**：用户输入里的一批 URL、一个 **URL 清单文件**（每行一个 URL）、或一个已抓好的 `data/<站点键>/` 目录；
    - **采集（落数据）**：对清单/输入里的每个网址，优先运行匹配的 `crawl_script/<站点键>/` 逆向脚本，否则用 `crawl_fetch` **按引擎降级**（camoufox → 失败/超时改 scrapling → 再失败改 crawl4ai → 全失败再报告），并带 **`outputFormat=<source_format>`**（与提取脚本 CONFIG.source_format 一致）与 **`saveDir=<工作区绝对路径>/data/<站点键>`**，同类型数据统一落 `data/<站点键>/`；
    - **入库（调脚本）**：`python <脚本> --data data/<站点键>`（目录/通配/单文件都支持）或 `python <脚本> --urls <清单> --data-dir data/<站点键>`（URL 清单驱动，入库 data/ 下已抓文件），批量 UPSERT 目标表。
-8. **预览并入库（只写目标表）**：
-   - 先 `python <脚本> --dry-run`，把将要写入的行展示给用户确认；
-   - 用户确认后正式运行：`python <脚本>`，**只向目标表写入**，按唯一键 UPSERT（已存在更新、无则插入）→ **无重复入库（去重/更新）**；绝不写/改其它表；
-   - 汇报插入/更新条数、目标表、脚本路径、source_format。
+8. **预览并入库（只写目标表，入库前有数据质量闸门）**：
+   - 先 `python <脚本> --dry-run`：先输出**数据质量检查**（乱码 + 缺失），再输出待写入行。出现**乱码值**、
+     或某列出现"应有值却缺失"（该列既不在 `fixed_values` 也不在 `allow_null_fields` 且为 NULL/空）时，报告会标记"需处理"；
+   - **有需处理项时不得直接写库**：通过 ask_user 与用户确认处理方式——按正确编码重抓/在 `extract_rows` 里按源
+     charset 显式解码后重提、填固定值、或把该列加入 `allow_null_fields`（用户同意留 NULL）；修复后重跑 `--dry-run` 确认变干净；
+   - 用户明确同意带问题写入时才可用 `python <脚本> --force`（跳过闸门，非用户确认不使用）；
+   - 干净后正式运行：`python <脚本>`，**只向目标表写入**，按唯一键 UPSERT（已存在更新、无则插入）→ **无重复入库（去重/更新）**；绝不写/改其它表；
+   - 汇报插入/更新条数、目标表、脚本路径、source_format 与入库前质量检查结论。
 9. **增量更新（客户续采/补采，省 token）**：当用户说"增量 / 补采 / 续采 / 更新数据"时，**禁止重新读历史数据、禁止重新逐字段确认、禁止重新逆向**，直接：
    - 先跑采集脚本增量：`python crawl_script/<站点键>/<脚本名>.py --incremental`（只抓新增/内容变化，自动更新 `data/<站点键>/manifest.json`）；
    - 再跑本脚本增量：`python <脚本> --incremental --dry-run` 预览（只显示新增/变化行）→ 用户确认 → `python <脚本> --incremental` 正式入库，成功后会回写 manifest 的 `extracted_hash`，下次自动跳过未变化的文件；
@@ -81,4 +85,5 @@ user-invocable: true
 - 用途合规：只写用户授权库表；不用于非法采集、绕过付费墙、损害他人系统。
 - 驱动缺失会明确提示安装命令；不支持的数据类型给出清晰报错，不静默失败。
 - source_format 必须与采集落盘格式一致；不一致会导致 extract_rows 解析不到字段（dry-run 会暴露）。
+- 写库前有数据质量闸门：乱码或非预期缺失会阻止写入（exit 3），必须与用户确认并修复或用 `--force` 明确放行，**禁止静默写入脏数据**。
 - 没有 manifest（早期未按模板采集的历史数据）时，`--incremental` 首跑会把这些文件当作"未入库"全量处理（UPSERT 去重安全），随后回写 manifest，后续即进入增量。

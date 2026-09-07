@@ -8,12 +8,13 @@
  2. 只修改标有 `# ⛏️ GEN-CUSTOM` 的区域：CONFIG（site/连接/目标表/输入/source_format/去重键/固定值）
     与 `extract_rows()`（本网站特有的解析逻辑）；其余保持不变。
  3. 运行方式（建议用 BoBo 的 .venv python，已含 pymysql/psycopg 与 lxml）：
-       python <名称>.py --dry-run                # 预览将要写入的行（回显给用户确认）
-       python <名称>.py                          # 正式入库（UPSERT 去重/更新）
+       python <名称>.py --dry-run                # 预览行 + 数据质量检查（乱码/缺失）
+       python <名称>.py                          # 正式入库（UPSERT 去重/更新；发现乱码/非预期缺失会阻止写入）
+       python <名称>.py --force                  # 绕开质量闸门强制写入（仅在与用户确认后使用）
        python <名称>.py --incremental            # 增量：只处理 manifest 中"新采集/内容变化"的文件
        python <名称>.py --incremental --dry-run  # 增量预览（只显示新增/变化行）
-   可选参数：--conn/--table/--data/--unique/--limit/--input-format/--site/--manifest 会覆盖 CONFIG 对应项。
- 4. 输出统一为"预览行 JSON + 插入/更新条数"，不做静默失败。
+   可选参数：--conn/--table/--data/--unique/--limit/--input-format/--site/--manifest/--force 会覆盖/调整对应项。
+ 4. 输出统一为"数据质量检查报告 + 预览行 JSON + 插入/更新条数"，不做静默失败。
 
 站点归类与增量（与 reverse-crawler 模板配合）：
  - 采集数据按站点落在 <工作区>/data/<站点键>/；本脚本默认读 <工作区>/data/<站点键>/（CONFIG.site 指定）。
@@ -72,6 +73,10 @@ CONFIG: dict = {
     "unique": [],
     # 固定值：{数据库字段名: 用户给定的固定值}，用于无法从网页提取的字段
     "fixed_values": {},
+    # 允许为 NULL 的字段：用户在确认阶段明确同意"此列留空为 NULL"的字段名列表。
+    # 数据质量检查（写库前）会把"不属于 fixed_values 也不属于本列表的空值"视为"应有值却缺失"
+    # 而标记需处理；乱码值无论何时都标记需处理。留空表示所有非固定值列缺值都要人工确认。
+    "allow_null_fields": [],
     # 字段重命名/别名：可选，{脚本内键: 目标字段名}
     "field_aliases": {},
 }
@@ -173,6 +178,79 @@ def _dedup(rows: list[dict], keys: list[str]) -> list[dict]:
     return list(seen.values())
 
 
+# ── 通用：数据质量检查（乱码 + 缺失），写库前闸门 ──────────────────────────
+
+def detect_mojibake(v: object) -> list[str]:
+    """检测一个值是否疑似乱码，返回触发原因列表；干净返回 []。
+
+    覆盖常见乱码特征：
+    - U+FFFD 替换符（UTF-8 解码失败 / errors='replace' 产生）；
+    - 经典 GBK 乱码串（"锟斤拷"、"烫烫烫" 等）；
+    - UTF-8 字节被当 latin-1 解码的高密度重音字符，且与少量中文混排。
+    """
+    if not isinstance(v, str) or not v:
+        return []
+    s = v
+    hints = []
+    if '\ufffd' in s:
+        hints.append('包含替换符 U+FFFD')
+    for seed in ('锟斤拷', '锟斤', '烫烫烫', '屯屯屯'):
+        if seed in s:
+            hints.append(f'疑似 GBK 乱码（含 "{seed}"）')
+    if len(s) >= 4:
+        acc = sum(1 for ch in s if '\u00c0' <= ch <= '\u00ff')
+        has_cjk = any('\u4e00' <= ch <= '\u9fff' for ch in s)
+        if acc and acc / len(s) > 0.5 and has_cjk:
+            hints.append('高密度 Latin-1 重音字符混入中文（疑似 UTF-8 被当 latin-1 解码）')
+    return hints
+
+
+def qc_report(rows: list[dict], table_cols: list[str], fixed_values: dict,
+              allow_null_fields: list[str]) -> tuple[list[str], bool]:
+    """数据质量检查：返回 (报告行, needs_attention)。
+
+    规则：
+    - 缺失：某列为 None/空，且该列既不在 fixed_values（恒有值）也不在 allow_null_fields
+      （用户同意为 NULL）⇒ 视为"应有值却缺失"，标记需处理；单列全部缺失额外提示疑似映射/解析错误。
+    - 乱码：任一值 detect_mojibake 命中 ⇒ 标记需处理（附修复建议），绝不静默写入。
+    """
+    allow = set(allow_null_fields or [])
+    lines = ['[数据质量检查]']
+    needs = False
+    n = max(1, len(rows))
+    for col in table_cols:
+        if col in fixed_values:
+            continue
+        miss = [i for i, r in enumerate(rows, 1) if r.get(col) in (None, '')]
+        if not miss:
+            continue
+        if col in allow:
+            lines.append(f"  列 {col}: {len(miss)} 条为 NULL（用户允许 NULL，不计为问题）")
+            continue
+        pct = len(miss) / n
+        flag = "全部缺失，疑似映射/解析错误，需处理" if len(miss) == n else "部分缺失，建议确认"
+        lines.append(f"  列 {col}: 缺失 {len(miss)}/{n} 条（占比 {pct:.0%}）── {flag}")
+        needs = True
+    mb_count = 0
+    for i, r in enumerate(rows, 1):
+        for col, val in r.items():
+            hints = detect_mojibake(val)
+            if hints:
+                mb_count += 1
+                if mb_count <= 5:
+                    sample = str(val)[:30]
+                    lines.append(f"  行 {i} 列 {col}: 疑似乱码（{'；'.join(hints)}）值={sample!r}")
+    if mb_count:
+        lines.append(
+            f"  乱码值共 {mb_count} 处。建议：对该来源用正确编码重抓，或在 extract_rows 里按源 charset "
+            "显式解码后再提取；修复后重跑 --dry-run。确实无法修复且用户明确同意写入时，用 --force。")
+        needs = True
+    if len(lines) == 1:
+        lines.append("  未发现乱码 / 非预期缺失。")
+    lines.append(f"  → {'需要处理（乱码或非预期缺失），未加 --force 不会写入' if needs else '通过，可正常写入'}")
+    return lines, needs
+
+
 # ── 通用：增量状态（manifest.json，与采集脚本共享）────────────────────────
 
 def hash_text(text: str) -> str:
@@ -221,7 +299,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="增量：对照 data/<site>/manifest.json，只处理新采集/内容变化的文件")
     p.add_argument("--manifest", default="", help="manifest 路径（缺省 data/<site>/manifest.json）")
     p.add_argument("--limit", type=int, default=0, help="最多处理前 N 条（0=全部）")
-    p.add_argument("--dry-run", action="store_true", help="只预览行数据，不写库")
+    p.add_argument("--dry-run", action="store_true", help="只预览行数据与数据质量检查结果，不写库")
+    p.add_argument("--force", action="store_true",
+                   help="跳过数据质量闸门强制写入（仅当乱码/缺失已与用户确认，或用户明确同意时使用）")
     p.add_argument("--json-out", action="store_true", help="dry-run 输出为 JSON")
     return p
 
@@ -368,7 +448,14 @@ def main(argv: list[str] | None = None) -> int:
             print("没有可写入的记录。")
             return 0
 
+        # 数据质量检查（乱码 + 缺失）：dry-run 展示报告；正式写库前若有需处理项则拒绝写入
+        qc_lines, needs_attention = qc_report(
+            rows_out, table_cols,
+            CONFIG.get("fixed_values", {}), CONFIG.get("allow_null_fields", []),
+        )
+
         if args.dry_run:
+            print("\n".join(qc_lines))
             if args.json_out:
                 print(json.dumps({"table": table, "rows": rows_out},
                                  ensure_ascii=False, indent=2, default=str))
@@ -377,6 +464,13 @@ def main(argv: list[str] | None = None) -> int:
                 for i, r in enumerate(rows_out, 1):
                     print(f"  #{i} {json.dumps(r, ensure_ascii=False, default=str)}")
             return 0
+
+        # 正式入库前闸门：存在乱码/非预期缺失时，必须显式 --force 才写入（= 已与用户确认）
+        if needs_attention and not args.force:
+            print("\n".join(qc_lines), file=sys.stderr)
+            print("【已阻止写入】数据质量存在需处理项。请先与用户确认，修复（如按正确编码重抓/重提）"
+                  "或用户明确同意后，再加 --force 强制写入。", file=sys.stderr)
+            return 3
 
         # 正式入库（UPSERT 去重/更新）
         print(f"入库 {table}（去重键 {keys or '取其主键/追加'}），{len(rows_out)} 条 ...")

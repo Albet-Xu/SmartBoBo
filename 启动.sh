@@ -27,6 +27,22 @@ else
   echo "       数据库面板不可用。请先按 docs/说明文档/20-DBX数据库集成操作指南.md 构建并复制 dbx-runtime。"
 fi
 
+# --- Refresh global env manifest and pre-provision camoufox (idempotent) ---
+# Writes dbx-runtime/env-manifest.json used by bobo-env skill / browser_server.
+# Fails non-fatally: never blocks BoBo startup.
+if [ -x "$BOBO_ROOT/.venv/bin/python" ]; then
+  PY_BIN="$BOBO_ROOT/.venv/bin/python"
+else
+  PY_BIN="$BOBO_ROOT/.venv/Scripts/python.exe"
+fi
+if [ -x "$PY_BIN" ]; then
+  echo "[INFO] Refreshing env manifest / preparing camoufox (skips if ready)..."
+  "$PY_BIN" "$BOBO_ROOT/scripts/gen_env_manifest.py" --root "$BOBO_ROOT" --ensure-camoufox || \
+    echo "[WARN] env manifest refresh failed (does not block BoBo startup)"
+else
+  echo "[WARN] .venv not found; skipping env manifest refresh."
+fi
+
 # 进入 dsh 目录并启动
 cd "$BOBO_ROOT/dsh"
 pnpm bobo

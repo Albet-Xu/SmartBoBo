@@ -40,6 +40,11 @@ from pathlib import Path
 from camoufox import DefaultAddons
 from camoufox.async_api import AsyncCamoufox
 
+# 复用环境清单的 camoufox 就绪探测 / 可执行路径（本脚本以 `python scripts/browser_server.py`
+# 方式运行，scripts/ 已在 sys.path）。用于在启动浏览器前做预检并固定可执行路径，
+# 避免 camoufox 在二进制缺失时于运行时静默联网重新下载。
+import gen_env_manifest
+
 # 常见 Cookie/隐私同意按钮，渲染前尝试点掉，避免正文被弹窗遮挡（沿用旧 run_camoufox.py 清单）
 COOKIE_ACCEPT_SELECTORS = [
     "button:has-text('我接受')",
@@ -170,15 +175,37 @@ def _camoufox_pids_matching(profile_abs_lower: str) -> list[int]:
 _LAUNCH_TIMEOUT_S = 45.0
 
 
+def _resolve_camoufox_executable() -> str:
+    """解析受控固定的 camoufox 可执行文件路径。
+
+    优先级：环境变量 BOBO_CAMOUFO_EXECUTABLE > 全局环境清单里的 executable。
+    camoufox 浏览器二进制缺失时**抛可执行化错误提示**，而不是让 camoufox 在运行时静默联网下载
+    （这是"camoufox 重新下载"问题的根治：下载只允许发生在启动脚本的受控预铺里）。
+    """
+    env_exe = os.environ.get("BOBO_CAMOUFO_EXECUTABLE")
+    if env_exe and Path(env_exe).exists():
+        return env_exe
+    exe = gen_env_manifest.camoufox_executable()
+    if exe:
+        return exe
+    raise RuntimeError(
+        "Camoufox 浏览器二进制未就绪。请先运行受控预铺："
+        "`<pythonBin> scripts/gen_env_manifest.py --ensure-camoufox`，"
+        "或重启 BoBo（启动脚本会自动预铺）。不要在浏览器服务里静默重新下载。"
+    )
+
+
 async def _launch_context(proxy_cfg: dict | None, profile_dir: str):
     """真正的上下文初始化（不重试）。"""
     Path(profile_dir).mkdir(parents=True, exist_ok=True)
+    # 固定可执行路径：让 launch_options 走已就绪的二进制，跳过内部"缺失即下载"分支。
     camo = AsyncCamoufox(
         headless=True,
         persistent_context=True,
         user_data_dir=profile_dir,
         exclude_addons=[DefaultAddons.UBO],
         proxy=proxy_cfg,
+        executable_path=_resolve_camoufox_executable(),
     )
     ctx = await camo.__aenter__()
     return camo, ctx

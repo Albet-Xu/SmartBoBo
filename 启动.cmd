@@ -20,6 +20,15 @@ rem --- Project root = this script's folder (strip trailing \) ---
 set "BOBO_ROOT=%~dp0"
 if "%BOBO_ROOT:~-1%"=="\" set "BOBO_ROOT=%BOBO_ROOT:~0,-1%"
 
+rem --- Refresh global env manifest and pre-provision camoufox (idempotent) ---
+rem Writes dbx-runtime/env-manifest.json used by bobo-env skill / browser_server.
+if exist "%BOBO_ROOT%\.venv\Scripts\python.exe" (
+  echo [INFO] Refreshing env manifest / preparing camoufox ^(skips if ready^)...
+  "%BOBO_ROOT%\.venv\Scripts\python.exe" "%BOBO_ROOT%\scripts\gen_env_manifest.py" --root "%BOBO_ROOT%" --ensure-camoufox
+) else (
+  echo [WARN] .venv not found; skipping env manifest refresh.
+)
+
 rem --- Enter dsh and start. BOBO_ROOT is exported to children ---
 cd /d "%BOBO_ROOT%\dsh"
 if errorlevel 1 (

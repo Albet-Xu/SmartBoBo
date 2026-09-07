@@ -1,6 +1,6 @@
 {
   "name": "bobo-desktop",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "BoBo 智能采集平台 · 桌面版（Electron 原生窗口）",
   "main": "main.js",
   "author": "BoBo",
