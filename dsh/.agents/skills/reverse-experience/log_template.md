@@ -1,7 +1,7 @@
 # 逆向任务日志模板（reverse-experience）
 
 > 用于「逆向经验沉淀」。模型在逆向任务结束时按本模板组织内容，调用
-> `mcp__reverse-memory__save` 时逐字段传入；memory_store 会按同样的结构
+> `mcp__reverse-memory__reverse_memory_save` 时逐字段传入；memory_store 会按同样的结构
 > 生成可读的 MD 日志文件并向量化入库。
 
 ## 必填字段

@@ -3,8 +3,8 @@
 提取入库脚本模板（db-extraction 技能提供）—— 通用骨架可复用，勿重写。
 
 生成脚本时：
- 1. 本文件复制为  <工作区>/extraction_scripts/<站点键>/<名称>.py，并把同目录的 `dbx_connector.py`
-    一并复制过来（脚本导入它读写数据库）。
+ 1. 本文件复制为  <工作区>/<站点键>/extraction_scripts/<名称>.py（站点键 = 域名去 www. + 点转横线），
+    并把同目录的 `dbx_connector.py` 一并复制过来（脚本导入它读写数据库）。
  2. 只修改标有 `# ⛏️ GEN-CUSTOM` 的区域：CONFIG（site/连接/目标表/输入/source_format/去重键/固定值）
     与 `extract_rows()`（本网站特有的解析逻辑）；其余保持不变。
  3. 运行方式（建议用 BoBo 的 .venv python，已含 pymysql/psycopg 与 lxml）：
@@ -17,8 +17,9 @@
  4. 输出统一为"数据质量检查报告 + 预览行 JSON + 插入/更新条数"，不做静默失败。
 
 站点归类与增量（与 reverse-crawler 模板配合）：
- - 采集数据按站点落在 <工作区>/data/<站点键>/；本脚本默认读 <工作区>/data/<站点键>/（CONFIG.site 指定）。
- - 采集脚本每次落盘会维护 data/<站点键>/manifest.json（每条记录含 file / file_hash），
+ - 站点键 = 域名去 www. + 点转横线（如 news.qq.com→news-qq-com）。采集数据按站点落在
+   <工作区>/<站点键>/data/；本脚本默认读 <工作区>/<站点键>/data/（由脚本位置自动推导，也可 --data 覆盖）。
+ - 采集脚本每次落盘会维护 <站点键>/data/manifest.json（每条记录含 file / file_hash），
    本脚本 --incremental 用它跳过"已入库且内容未变化"的文件，只处理新增/变化，省 token、少碰库。
  - UPSERT 本身按唯一键去重/更新，是全量安全兜底；--incremental 只做"跳过没变的"提速。
 
@@ -47,11 +48,16 @@ from dbx_connector import (
     upsert_rows,
 )
 
+# 本脚本位于 <工作区>/<站点键>/extraction_scripts/<名>.py → 站点目录是该脚本目录的上一级。
+# 采集数据在 <工作区>/<站点键>/data/（站点在外、类型在内），脚本与数据为同站点下的兄弟目录。
+_SITE_DIR = Path(__file__).resolve().parent.parent
+_DEFAULT_DATA_DIR = str(_SITE_DIR / "data")
+
 
 # ⛏️ GEN-CUSTOM —— 目标定制区（生成脚本时只改这里）───────────────────────────
 
 CONFIG: dict = {
-    # 站点键 = 域名去 www.（如 "news.qq.com"）：定位 data/<站点键>/ 与 manifest.json
+    # 站点键 = 域名去 www. + 点转横线（如 "news-qq-com"）：定位 <站点键>/data/ 与 manifest.json
     "site": "",
     # DBX 中已保存的连接名（用 dbx_connector.py list-connections 查看）
     "conn": "MySQL_tloz",
@@ -61,10 +67,10 @@ CONFIG: dict = {
     # 生成脚本时由 AI 定位 BoBo 根目录后填入，确保在任何工作区都能读到 DBX 已存连接。
     "dbx_data_dir": "",
     # 输入数据：可以是单个文件、通配（*.md）、或一个目录（遍历其中 .md/.txt/.html/.skeleton.txt）。
-    # 批量入库时通常填一个 data 目录或用 --data/--urls 指定。
-    "input": "data",
+    # 批量入库时通常填一个 data 目录或用 --data/--urls 指定；缺省取 <站点键>/data/。
+    "input": _DEFAULT_DATA_DIR,
     # URL 清单模式下的已抓数据目录（采集与入库分离：清单用于批量采集落盘，入库读这里）
-    "data_dir": "data",
+    "data_dir": _DEFAULT_DATA_DIR,
     # 采集输出的源格式："md"(默认) / "html" / "skeleton"。
     # 必须与工作流采集落到 data/ 的 crawl_fetch outputFormat 一致，extract_rows 按它解析。
     "source_format": "md",
@@ -259,8 +265,8 @@ def hash_text(text: str) -> str:
 
 
 def default_manifest_path(cwd: Path, site: str) -> Path:
-    """默认 manifest：<工作区>/data/<站点键>/manifest.json（采集脚本维护）。"""
-    return cwd / "data" / (site or "_") / "manifest.json"
+    """默认 manifest：<工作区>/<站点键>/data/manifest.json（采集脚本维护）。"""
+    return _SITE_DIR / "data" / "manifest.json"
 
 
 def load_manifest(p: Path) -> dict:
@@ -284,11 +290,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="把采集数据按字段抽取后 UPSERT 入库（去重/更新，支持增量）。")
     p.add_argument("--conn", default=CONFIG.get("conn"), help="DBX 连接名")
     p.add_argument("--table", default=CONFIG.get("table"), help="目标表名")
-    p.add_argument("--site", default=CONFIG.get("site") or "", help="站点键（定位 data/<site>/ 与 manifest）")
+    p.add_argument("--site", default=CONFIG.get("site") or "", help="站点键（定位 <站点键>/data/ 与 manifest）")
     p.add_argument("--data", default=CONFIG.get("input") or "", help="输入：文件 / 通配(*.md) / 目录(遍历其中 md/txt/html)")
-    p.add_argument("--data-dir", default=CONFIG.get("data_dir") or "data",
-                   help="URL 清单模式下的已抓数据目录（默认 data）")
-    p.add_argument("--urls", default="", help="URL 清单文件（每行一个 URL，采集与入库分离时作批量清单，入库读 data/）")
+    p.add_argument("--data-dir", default=CONFIG.get("data_dir") or _DEFAULT_DATA_DIR,
+                   help="URL 清单模式下的已抓数据目录（默认 <站点键>/data/）")
+    p.add_argument("--urls", default="", help="URL 清单文件（每行一个 URL，采集与入库分离时作批量清单，入库读 <站点键>/data/）")
     p.add_argument("--dbx-data-dir", default=CONFIG.get("dbx_data_dir") or "",
                    help="dbx.db 所在目录（BoBo/dbx-runtime/data）")
     p.add_argument("--input-format", default=CONFIG.get("source_format") or "md",
@@ -296,8 +302,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="采集源格式 md/html/skeleton（覆盖 CONFIG.source_format；须与采集落盘格式一致）")
     p.add_argument("--unique", default="", help="逗号分隔的去重键（覆盖 CONFIG.unique）")
     p.add_argument("--incremental", action="store_true",
-                   help="增量：对照 data/<site>/manifest.json，只处理新采集/内容变化的文件")
-    p.add_argument("--manifest", default="", help="manifest 路径（缺省 data/<site>/manifest.json）")
+                   help="增量：对照 <站点键>/data/manifest.json，只处理新采集/内容变化的文件")
+    p.add_argument("--manifest", default="", help="manifest 路径（缺省 <站点键>/data/manifest.json）")
     p.add_argument("--limit", type=int, default=0, help="最多处理前 N 条（0=全部）")
     p.add_argument("--dry-run", action="store_true", help="只预览行数据与数据质量检查结果，不写库")
     p.add_argument("--force", action="store_true",
@@ -380,14 +386,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.urls and Path(args.urls).is_file():
         urls = read_url_list(args.urls)
         # 采集与入库分离：清单用于批量采集落盘，入库读已抓好的目录
-        inputs = resolve_input(args.data_dir or "data", cwd)
+        inputs = resolve_input(args.data_dir or _DEFAULT_DATA_DIR, cwd)
         if urls:
-            print(f"URL 清单 {len(urls)} 条；入库 {args.data_dir or 'data'} 下已抓取的 {len(inputs)} 个文件。")
+            print(f"URL 清单 {len(urls)} 条；入库 {args.data_dir or _DEFAULT_DATA_DIR} 下已抓取的 {len(inputs)} 个文件。")
     else:
-        data_arg = args.data or args.data_dir or ""
+        data_arg = args.data or args.data_dir or _DEFAULT_DATA_DIR
         inputs = resolve_input(data_arg, cwd)
         if not inputs:
-            inputs = resolve_input("data", cwd)
+            inputs = resolve_input(_DEFAULT_DATA_DIR, cwd)
     if not inputs:
         print(f"错误: 没有找到待入库数据（--data/--data-dir 下无 .md/.txt/.html）。", file=sys.stderr)
         return 1

@@ -3,8 +3,9 @@
 # 核心行为：检测用户输入中的「采集/爬取/入库」关键词与网址 → 先从数据库目标表读字段（仅操作被授权的
 # 目标表，不触碰其它表）→ 严格逐一确认每个字段含义（可给推荐，但每个字段都必须征求用户意见）→ 再抓
 # 一个样品页了解结构、核对字段是否满足，不满的字段问用户填 NULL 还是固定值 → 写提取入库脚本到工作区
-# extraction_scripts/（复用模板技能 db-extraction，同类+同表直接复用）→ 最后对大批量同类型网址批量
-# 采集（采集/入库分离）并调用脚本 UPSERT 去重/更新入库（仅写目标表）。
+# <站点键>/extraction_scripts/（站点键 = 域名去 www. + 点转横线，如 news.qq.com→news-qq-com；复用模板技能
+# db-extraction，同类+同表直接复用）→ 最后对大批量同类型网址批量采集（采集/入库分离）并调用脚本
+# UPSERT 去重/更新入库（仅写目标表）。
 #
 # 工具组成为「逆向模式的近标准工具集 + 采集工具 tool-acquisition」：shell、fs、skill、
 # 计划、子代理、web、crawl_fetch 等，模型可自主选择合适工具完成"采集→确认→入库"全流程。
@@ -43,9 +44,9 @@
 
       ## 三、抓取样品页了解页面结构
 
-      1. 抓取一个**样品页**了解页面结构。优先查看 `crawl_script/<站点键>/` 是否已有匹配该网址类型的逆向脚本；若有，可先运行其拿一份样品（数据落 `{{cwd}}/data/<站点键>/`）。否则用 `crawl_fetch`（唯一引擎 camoufox）抓一个样品，**传 `saveDir=<工作区绝对路径>/data/<站点键>`**，保存到 `{{cwd}}/data/<站点键>/`。
+      1. 抓取一个**样品页**了解页面结构。优先查看 `{{cwd}}/<站点键>/crawl_script/` 是否已有匹配该网址类型的逆向脚本；若有，可先运行其拿一份样品（数据落 `{{cwd}}/<站点键>/data/`）。否则用 `crawl_fetch`（唯一引擎 camoufox）抓一个样品，**传 `saveDir=<工作区绝对路径>/<站点键>/data`**，保存到 `{{cwd}}/<站点键>/data/`。
       2. 阅读样品内容，**枚举该网页可提供的信息点**（标题、正文、列表项、价格、日期、来源链接、图片等），记录每条信息的样例值。同类型网址结构一致时，只需侦察一个样品即可。
-      3. 记录是否存在匹配的 `crawl_script/<站点键>/` 逆向脚本（存在则留到批量采集阶段优先调用）、以及样品数据文件路径。
+      3. 记录是否存在匹配的 `{{cwd}}/<站点键>/crawl_script/` 逆向脚本（存在则留到批量采集阶段优先调用）、以及样品数据文件路径。
 
       ## 四、核对字段满足度 & 补空值/固定值，并选定采集输出格式
 
@@ -56,17 +57,17 @@
 
       ## 五、写提取入库脚本（复用模板，省 token；按站点键归类）
 
-      1. 检查当前工作区 `extraction_scripts/` 是否存在；不存在则用文件系统工具创建。
-      2. **站点键** = 目标域名去掉 `www.`（如 `news.qq.com`，与采集脚本 SITE_KEY 一致）。先读 `extraction_scripts/index.md`（不存在视为空）：若已有"同站点键 → 同一目标表 → 同 source_format"的脚本，直接复用（跳到批量入库），不再重新生成。
-      3. 否则加载 `db-extraction` 技能，把 `extraction_template.py` 复制为 `{{cwd}}/extraction_scripts/<站点键>/<名称>.py`（同目录复制 `dbx_connector.py`），**只填写 `# ⛏️ GEN-CUSTOM` 定制区**：`site`（站点键）、连接名、目标表、`dbx_data_dir`（`<BoBo根目录>/dbx-runtime/data`）、`source_format`（第 4 步选定的格式）、去重键、固定值、`allow_null_fields`（用户在第 4 步**明确同意留空为 NULL** 的字段名，写入库质量闸门放行；只放用户确认过的）、`extract_rows(text, source_format)`（先用 `parse_source(text, source_format)` 取取值块，再按确认的映射把该网站采集结果拆成记录）。
-      4. 在 `index.md` **追加**一行登记：站点键、目标表、source_format、脚本名、去重键（不覆盖已有行）。
+      1. **站点键** = 目标域名去前导 `www.` 并把 `.` 替换为 `-`（如 `news.qq.com` → `news-qq-com`、`www.iaea.org` → `iaea-org`，与采集脚本 SITE_KEY 一致）。目标站点的所有产物统一放 `{{cwd}}/<站点键>/` 下：`data/`（采集数据）、`crawl_script/`（采集/逆向脚本）、`extraction_scripts/`（提取入库脚本）。检查 `{{cwd}}/<站点键>/extraction_scripts/` 是否存在；不存在则用文件系统工具创建。
+      2. 先读 `{{cwd}}/<站点键>/extraction_scripts/index.md`（不存在视为空）：若已有"同站点键 → 同一目标表 → 同 source_format"的脚本，直接复用（跳到批量入库），不再重新生成。`index.md` 登记在站点目录下（每个站点各自一份，不跨站点混放）。
+      3. 否则加载 `db-extraction` 技能，把 `extraction_template.py` 复制为 `{{cwd}}/<站点键>/extraction_scripts/<名称>.py`（同目录复制 `dbx_connector.py`），**只填写 `# ⛏️ GEN-CUSTOM` 定制区**：`site`（站点键）、连接名、目标表、`dbx_data_dir`（`<BoBo根目录>/dbx-runtime/data`）、`source_format`（第 4 步选定的格式）、去重键、固定值、`allow_null_fields`（用户在第 4 步**明确同意留空为 NULL** 的字段名，写入库质量闸门放行；只放用户确认过的）、`extract_rows(text, source_format)`（先用 `parse_source(text, source_format)` 取取值块，再按确认的映射把该网站采集结果拆成记录）。
+      4. 在 `{{cwd}}/<站点键>/extraction_scripts/index.md` **追加**一行登记：站点键、目标表、source_format、脚本名、去重键（不覆盖已有行）。
       5. 通用骨架（读数据、取字段、连库、UPSERT、预览、CLI、增量）全部来自模板，不要重写。
 
       ## 六、批量采集与入库（采集与入库分离；只写目标表；无重复入库：去重/更新；按站点键归类）
 
-      1. **批量来源**：大批量网址/数据可以是——用户输入里给的一批 URL、一个**网址清单文件**（每行一个 URL）、或一个已抓好的 `data/<站点键>/` 目录。用户输入外的批量清单，按用户给的路径读取。
-      2. **采集（落数据）**：对清单里的每个网址，优先运行匹配的 `crawl_script/<站点键>/` 逆向脚本，否则用 `crawl_fetch`（唯一引擎 camoufox；失败时工具自动重启浏览器服务重试一次），并带 **`outputFormat=<source_format>`**（与提取脚本 CONFIG.source_format 一致，保证采集落盘格式等于提取脚本读取格式）与 **`saveDir=<工作区绝对路径>/data/<站点键>`**，把同类型网址的采集结果统一存到 `{{cwd}}/data/<站点键>/`。
-      3. **入库（调脚本）**：调用（或复用）提取脚本批量 UPSERT 入库：`python <脚本> --data {{cwd}}/data/<站点键>`（指向收集好同类型数据的目录，脚本会遍历其中文件提取并写入目标表）。
+      1. **批量来源**：大批量网址/数据可以是——用户输入里给的一批 URL、一个**网址清单文件**（每行一个 URL）、或一个已抓好的 `{{cwd}}/<站点键>/data/` 目录。用户输入外的批量清单，按用户给的路径读取。
+      2. **采集（落数据）**：对清单里的每个网址，优先运行匹配的 `{{cwd}}/<站点键>/crawl_script/` 逆向脚本，否则用 `crawl_fetch`（唯一引擎 camoufox；失败时工具自动重启浏览器服务重试一次），并带 **`outputFormat=<source_format>`**（与提取脚本 CONFIG.source_format 一致，保证采集落盘格式等于提取脚本读取格式）与 **`saveDir=<工作区绝对路径>/<站点键>/data`**，把同类型网址的采集结果统一存到 `{{cwd}}/<站点键>/data/`。
+      3. **入库（调脚本）**：调用（或复用）提取脚本批量 UPSERT 入库：`python <脚本> --data {{cwd}}/<站点键>/data`（指向收集好同类型数据的目录，脚本会遍历其中文件提取并写入目标表）。
       4. **数据入库前先做质量闸门，再写库**：
       - 正式写库前先 `--dry-run`：脚本先输出**数据质量检查**（乱码 + 缺失），再输出待写入行给用户。出现**乱码值**、或某列"应有值却缺失"（不在 `fixed_values` 又不在 `allow_null_fields` 且为 NULL/空）时，报告会标记"需处理"；
       - **有需处理项时不得直接写库**：通过 ask_user 与用户确认处理方式——按正确编码重抓 / 在 `extract_rows` 里按源 charset 显式解码后重提、填固定值、或把该列加入 `allow_null_fields`（用户同意留 NULL）；修复后重跑 `--dry-run` 确认变干净；
@@ -77,10 +78,10 @@
 
       当用户输入含「增量 / 补采 / 续采 / 更新 / 最新数据」等关键词，且目标站点之前已采集过时，**不重新触发第一到六阶段**，直接走增量流程：
 
-      1. **定位现状**：读 `crawl_script/index.md` 与 `extraction_scripts/index.md`、`data/<站点键>/manifest.json` 确认已有脚本与历史状态；未命中站点键或脚本缺失时，按正常工作流先建脚本。
-      2. **硬红线（省 token 关键）**：增量更新**禁止**重新读取历史 data 文件、**禁止** `describe-table` / 整表 SELECT、**禁止**重新逐字段询问字段含义；字段映射与去重键一律以 `extraction_scripts/<站点键>/` 现有脚本内 CONFIG 为准；也不重新逆向（脚本报错时才检查失败样本定位问题）。
-      3. **采集增量**：运行 `python crawl_script/<站点键>/<脚本名>.py --incremental`（只抓新增或内容变化，自动更新 manifest）；如采集脚本不支持增量则重新按模板生成。
-      4. **入库增量**：`python extraction_scripts/<站点键>/<脚本名>.py --incremental --dry-run` 预览（只显示新增/变化行）→ 用户确认 → `python <脚本> --incremental` 正式入库（成功回写 manifest，下次自动跳过未变化的文件）。
+      1. **定位现状**：读 `{{cwd}}/<站点键>/crawl_script/index.md` 与 `{{cwd}}/<站点键>/extraction_scripts/index.md`、`{{cwd}}/<站点键>/data/manifest.json` 确认已有脚本与历史状态；未命中站点键或脚本缺失时，按正常工作流先建脚本。
+      2. **硬红线（省 token 关键）**：增量更新**禁止**重新读取历史 data 文件、**禁止** `describe-table` / 整表 SELECT、**禁止**重新逐字段询问字段含义；字段映射与去重键一律以 `{{cwd}}/<站点键>/extraction_scripts/` 现有脚本内 CONFIG 为准；也不重新逆向（脚本报错时才检查失败样本定位问题）。
+      3. **采集增量**：运行 `python {{cwd}}/<站点键>/crawl_script/<脚本名>.py --incremental`（只抓新增或内容变化，自动更新 manifest）；如采集脚本不支持增量则重新按模板生成。
+      4. **入库增量**：`python {{cwd}}/<站点键>/extraction_scripts/<脚本名>.py --incremental --dry-run` 预览（只显示新增/变化行）→ 用户确认 → `python <脚本> --incremental` 正式入库（成功回写 manifest，下次自动跳过未变化的文件）。
       5. **汇报**：新增/更新/跳过条数、目标表、脚本路径；全程模型只跑脚本并汇报 diff，不通读历史数据。
 
       ## 交互与汇报风格
@@ -93,20 +94,20 @@
 
       本模式可直接访问并写入逆向经验记忆库（RAG）：批量采集遇到反爬、签名、登录态、验证码等逆向难点时，先检索历史经验；就地完成逆向破解后，把自己的经验沉淀入库。
 
-      - 检索：调用 `mcp__reverse-memory-wf__search`（传目标域名 / 特征 / tags，如 js混淆、wasm加密、签名参数、行为风控、cloudflare）。历史经验仅供启发思路，必须结合当前站点实测验证，**禁止照搬**。
-      - 沉淀：逆向破解结束后调用 `mcp__reverse-memory-wf__save`。成功 / 失败案例**都要**按置信度评估——置信度 1-5 如实自评（只跑通一次 ≤2.0），**≥ 1.8 才入库**（本地 md + 向量库；失败案例侧重写踩坑教训），**< 1.8 直接放弃、不产生任何文件**；真实 Cookie / Token / 密钥必须打码，不写原文。
-      - 反馈：采纳过某条历史经验后，用 `mcp__reverse-memory-wf__feedback(<经验id>, "success"|"fail")` 让靠谱案例越用越靠前。
-      - 状态：需要确认记忆库是否正常时调用 `mcp__reverse-memory-wf__stats`。
+      - 检索：调用 `mcp__reverse-memory-wf__reverse_memory_search`（传目标域名 / 特征 / tags，如 js混淆、wasm加密、签名参数、行为风控、cloudflare）。历史经验仅供启发思路，必须结合当前站点实测验证，**禁止照搬**。
+      - 沉淀：逆向破解结束后调用 `mcp__reverse-memory-wf__reverse_memory_save`。成功 / 失败案例**都要**按置信度评估——置信度 1-5 如实自评（只跑通一次 ≤2.0），**≥ 1.8 才入库**（本地 md + 向量库；失败案例侧重写踩坑教训），**< 1.8 直接放弃、不产生任何文件**；真实 Cookie / Token / 密钥必须打码，不写原文。
+      - 反馈：采纳过某条历史经验后，用 `mcp__reverse-memory-wf__reverse_memory_feedback(<经验id>, "success"|"fail")` 让靠谱案例越用越靠前。
+      - 状态：需要确认记忆库是否正常时调用 `mcp__reverse-memory-wf__reverse_memory_stats`。
 
       ## 逆向破解流程（就地执行，固定）
 
       批量采集统一先走采集工具：`crawl_fetch`（唯一引擎 camoufox）。采集失败时，工具会自动重启长驻浏览器服务重试一次。当**重试后仍失败**，且失败特征命中反爬（412 / 403 / 验证码 / JS 混淆或逆向 SDK（如 webmssdk / X-Bogus / a_bogus）/ 动态 cookie / 登录态校验）时，**就地执行逆向破解，不要请用户切换模式**：
 
-      1. 先用 `mcp__reverse-memory-wf__search` 检索相似历史案例，把命中结果当作**待验证假设**；
+      1. 先用 `mcp__reverse-memory-wf__reverse_memory_search` 检索相似历史案例，把命中结果当作**待验证假设**；
       2. 获取页面与网络请求：用 crawl_fetch / 网页搜索 / shell 抓包等任一合适手段拿到页面 HTML 与关键 XHR/Fetch 请求；
       3. 用 `mcp__camoufox-debug-wf__*` 工具分析页面与接口（先 `debug_navigate` 打开并保持会话，再 `debug_network` 定位接口、`debug_evaluate` 验签名/抠参数、`debug_cookies` 看动态 cookie、`debug_websocket` 看消息）：URL、参数、请求头、Cookie、签名 / 加密逻辑，识别 JS 中对参数的加密、混淆、时间戳签名等逆向难点，确认数据返回结构（JSON/HTML）与要提取的字段；分析完 `debug_close`；
       4. 结合已安装的爬虫 / 网页逆向相关 skills 与内置模板技能 `reverse-crawler` 选稳定方案；遇到需要登录态 / 验证码 / 凭证等必要信息时用 ask_user 向用户索取；
-      5. 破解成功后，按「逆向经验参考与沉淀」规则调用 `mcp__reverse-memory-wf__save` 沉淀经验（成功 / 失败都按 ≥ 1.8 评估）；
+      5. 破解成功后，按「逆向经验参考与沉淀」规则调用 `mcp__reverse-memory-wf__reverse_memory_save` 沉淀经验（成功 / 失败都按 ≥ 1.8 评估）；
       6. 回到批量流程：写爬取脚本并入库（复用 db-extraction 模板脚本），完成采集与入库。
 
       ## 代理模式（固定）

@@ -22,6 +22,9 @@ __pycache__/
 # data/ 下是采集到的网页原始数据，全部不入库；仅保留目录占位 .gitkeep
 data/*
 !data/.gitkeep
+# 站点爬取数据：<工作区>/<站点键>/data/ 同样不入库；站点脚本 crawl_script/、extraction_scripts/ 需入库
+*/data/*
+!*/data/.gitkeep
 
 # ── DBX 数据库运行时：二进制 / 前端dist / 数据库数据 入库（居家拉取即用）；仅运行日志不入库 ──
 dbx-runtime/*.log
@@ -33,6 +36,10 @@ dbx-runtime/*.log
 release/
 desktop/release-*/
 dsh/msn_baxian_article.md
+
+# ── 本地运行噪声（不入库）───────────────────────────
+bobo-*.log
+dbx-runtime/env-manifest.json
 bobo-data/
 # 内部说明手册（docs）仅本地保留，不随仓库对外公布
 docs/

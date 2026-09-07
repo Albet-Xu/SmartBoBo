@@ -145,6 +145,7 @@ def build_manifest(root: Path) -> dict:
         "dbxDataDir": str(root / "dbx-runtime" / "data"),
         "crawlScriptDir": str(root / "crawl_script"),
         "proxyPoolConfig": f"{settings}（命名空间 proxy-pool；会话用 /proxy 命令开关）",
+        "siteKeyNote": "站点键 = 域名去 www. + 点转横线（news.qq.com→news-qq-com）；产物按站点归类在 <工作区>/<站点键>/{data,crawl_script,extraction_scripts}/。",
         "browserServer": {
             "host": "127.0.0.1",
             "port": "由 BOBO_ROOT 的 crc32 派生于 20000-39999（scripts/crawl_common.py derive_browser_port）",
@@ -152,9 +153,10 @@ def build_manifest(root: Path) -> dict:
         },
         "camoufox": camoufox_readiness(),
         "workspaceNote": (
-            "data/ 与 extraction_scripts/ 位于当前工作区（{{cwd}}）下而非 BoBo 根；"
-            "crawl_script/ 位于 BoBo 根。camoufox 浏览器二进制安装于用户缓存目录（不在项目内），"
-            "缺失时请用 `python gen_env_manifest.py --ensure-camoufox` 受控预铺一次，"
+            "data/、crawl_script/、extraction_scripts/ 按站点归类在 <工作区>/<站点键>/ 下"
+            "（站点键 = 域名去 www. + 点转横线，如 news.qq.com→news-qq-com），而非 BoBo 根；"
+            "BoBo 根 crawl_script/ 仅为历史/示例存量。camoufox 浏览器二进制安装于用户缓存目录"
+            "（不在项目内），缺失时请用 `python gen_env_manifest.py --ensure-camoufox` 受控预铺一次，"
             "勿让运行时静默联网下载。"
         ),
     }

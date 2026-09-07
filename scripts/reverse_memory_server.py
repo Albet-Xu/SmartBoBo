@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 """reverse-memory —— 本地 MCP server，为逆向/工作流模式提供「逆向经验记忆库（RAG）」工具。
 
-模型可见工具（serverName=reverse-memory → mcp__reverse-memory__*）：
+模型可见工具（serverName=reverse-memory → mcp__reverse-memory__reverse_memory_*）：
 - reverse_memory_search(domain, tags, features, query, top_k)   —— 混合检索历史逆向经验
 - reverse_memory_save(...)                                      —— 沉淀一条逆向经验（置信度>=1.8 才入库）
 - reverse_memory_feedback(experience_id, outcome)              —— 采纳反馈：成功+0.5 / 失败-0.5
 - reverse_memory_stats()                                        —— 库统计与 Qdrant 状态
 - reverse_memory_cleanup(dry_run)                              —— 冷归档未复用的旧案例
 
-只读模式：环境变量 REVERSE_MEMORY_READONLY=1 时（工作流模式预设配置），
-不注册 save / feedback / cleanup 三个写工具，模型只能查询。
+只读模式：环境变量 REVERSE_MEMORY_READONLY=1 时（当前逆向/工作流预设均**未**启用，
+两模式均为读写实例），不注册 save / feedback / cleanup 三个写工具，模型只能查询；
+默认不设该环境变量即注册全量写工具。
 
 核心实现单一来源：技能目录 memory_store.py（~/.dsh/skills/reverse-experience/
 > 项目 dsh/.agents/skills/reverse-experience/ > scripts/ 同目录 依次回退）。

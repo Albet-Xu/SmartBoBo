@@ -4,9 +4,10 @@
 生成脚本时：
  1. 复制本文件为 <目标>.py，改底部「⛏️ TARGET-CUSTOM 目标定制区」；
  2. 只修改标有 `# ⛏️ TARGET-CUSTOM` 的区域，其余保持不变；
- 3. 输出统一为 Markdown，按站点归类保存到当前工作区 data/<站点键>/；
+ 3. 输出统一为 Markdown，按站点归类保存到当前工作区 <站点键>/data/；
     每次落盘自动维护同目录 manifest.json（url/标题/内容hash/时间），
     支持 `--incremental` 增量采集（只抓新增/内容变化的条目，省时省 token）。
+    站点键 = 域名去 www. + 点转横线（如 news.qq.com→news-qq-com）。
 依赖：requests（必装）；需要浏览器渲染时用内置 camoufox（`.venv` 已装，
 或 `pip install camoufox`）；可选 html2text（无则用内置简单转换）。
 """
@@ -34,7 +35,10 @@ except ImportError:  # pragma: no cover
 # ---------------------------------------------------------------------------
 DEFAULT_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-OUT_DIR = Path("data")          # 数据根目录：<工作区>/data/<站点键>/，也可用 --output 指定单文件
+# 本脚本位于 <工作区>/<站点键>/crawl_script/<名>.py → 站点目录是该脚本目录的上一级。
+# 数据统一落 <工作区>/<站点键>/data/（站点在外、类型在内），脚本与数据为同站点下的兄弟目录。
+_SITE_DIR = Path(__file__).resolve().parent.parent
+OUT_DIR = _SITE_DIR / "data"    # 数据根目录：<工作区>/<站点键>/data/，也可用 --output 指定单文件
 TIMEOUT = 20
 RETRIES = 3
 RETRY_BACKOFF = 2.0             # 秒；每次失败翻倍
@@ -55,10 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--delay", type=float, default=0.0, help="每次请求间隔秒数（限速）")
     p.add_argument("--browser", action="store_true", help="强制用内置 camoufox 浏览器渲染")
     p.add_argument("--incremental", action="store_true",
-                   help="增量模式：与 data/<站点键>/manifest.json 对比，只处理新增/内容变化的条目")
+                   help="增量模式：与 <站点键>/data/manifest.json 对比，只处理新增/内容变化的条目")
     p.add_argument("--force", action="store_true", help="增量模式下强制重抓（忽略内容 hash 对比）")
     p.add_argument("--limit", type=int, default=0, help="最多处理前 N 条候选（0=全部）")
-    p.add_argument("--manifest", default="", help="manifest 路径（缺省 data/<站点键>/manifest.json）")
+    p.add_argument("--manifest", default="", help="manifest 路径（缺省 <站点键>/data/manifest.json）")
     return p
 
 
@@ -78,9 +82,19 @@ def parse_headers(extra: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # 通用骨架：站点键与目录（按网站名归类）
 # ---------------------------------------------------------------------------
+def _norm_key(host: str) -> str:
+    """站点键 = 域名去前导 www. 并把 . 换成 -（如 news.qq.com→news-qq-com、www.iaea.org→iaea-org）。"""
+    h = host.strip().lower()
+    h = h.split("@")[-1].split(":")[0]
+    if h.startswith("www."):
+        h = h[4:]
+    return h.replace(".", "-") or "unknown"
+
+
 def _site_key() -> str:
-    """站点键 = TARGET-CUSTOM 区 SITE_KEY（域名去 www.，如 news.qq.com）；未填则由 URL 推导。"""
-    return globals().get("SITE_KEY") or ""
+    """站点键 = TARGET-CUSTOM 区 SITE_KEY（去 www. + 点转横线，如 news-qq-com）；未填则由 URL 推导。"""
+    raw = globals().get("SITE_KEY") or ""
+    return _norm_key(raw) if raw else ""
 
 
 def site_key(url: str) -> str:
@@ -88,13 +102,12 @@ def site_key(url: str) -> str:
     if key:
         return key
     host = urlparse(url).netloc or urlparse(url).path
-    host = host.split("@")[-1].split(":")[0].replace("www.", "").strip()
-    return host or "unknown"
+    return _norm_key(host)
 
 
 def site_data_dir() -> Path:
-    """数据目录：<工作区>/data/<站点键>/（不存在时由 save_markdown 自动创建）。"""
-    return OUT_DIR / (_site_key() or "unknown")
+    """数据目录：<工作区>/<站点键>/data/（不存在时由 save_markdown 自动创建）。"""
+    return _SITE_DIR / (_site_key() or "unknown") / "data"
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +303,7 @@ def build_filename(url: str, title: str, ts: str | None = None) -> str:
 
 def save_markdown(markdown_body: str, title: str, url: str,
                   out_dir: Path | None = None, out_file: str = "") -> Path:
-    """把 Markdown 保存到 data/<站点键>/ 目录；目录不存在则自动创建。返回保存路径。"""
+    """把 Markdown 保存到 <站点键>/data/ 目录；目录不存在则自动创建。返回保存路径。"""
     out_dir = (out_dir or site_data_dir()).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     fname = out_file or build_filename(url, title)

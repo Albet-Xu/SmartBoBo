@@ -298,10 +298,13 @@ def _semantic_text(rec: dict[str, Any]) -> str:
 
 
 def _normalize_domain(domain: str) -> str:
+    """domain 字段归一化：小写、去协议/路径/端口，并去掉前导 www.（保留真实域名与点，如 www.iaea.org→iaea.org）。"""
     d = domain.strip().lower()
     if "://" in d:
         d = urlparse(d).netloc or d
     d = d.split("/")[0].split(":")[0]
+    if d.startswith("www."):
+        d = d[4:]
     return d or "unknown"
 
 
@@ -343,14 +346,25 @@ def _record(rec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _sanitize_filename(domain: str) -> str:
+def _legacy_sanitize(domain: str) -> str:
+    """旧版目录名：仅替换文件系统非法字符（用于迁移识别旧目录）。"""
     s = re.sub(r'[\\/:*?"<>|]', "_", domain)
     return s or "unknown"
 
 
+def _dir_key(domain: str) -> str:
+    """目录名 = 域名去前导 www. + . 转 -（www.iaea.org→iaea-org、news.qq.com→news-qq-com）。"""
+    d = domain.strip().lower()
+    d = d.split("/")[0].split(":")[0]
+    if d.startswith("www."):
+        d = d[4:]
+    return _legacy_sanitize(d.replace(".", "-")) or "unknown"
+
+
 def md_path_for(rec: dict[str, Any]) -> Path:
+    """经验 MD 日志路径：<data_dir>/<站点目录键>/<ts>-<id8>.md（站点目录键 = 域名去 www. + .转-）。"""
     ts = rec["created_at"].replace(":", "-").replace("+00:00", "Z")
-    return data_dir() / _sanitize_filename(rec["domain"]) / f"{ts}-{rec['id'][:8]}.md"
+    return data_dir() / _dir_key(rec["domain"]) / f"{ts}-{rec['id'][:8]}.md"
 
 
 def _md_content(rec: dict[str, Any]) -> str:
@@ -418,6 +432,73 @@ def _update_md_from_registry(reg: dict[str, Any]) -> None:
             lines.append("")
         lines.extend(markers)
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# 旧布局迁移（一次，幂等）
+# ---------------------------------------------------------------------------
+
+_MIGRATED = False
+
+
+def _migrate_legacy_layout() -> None:
+    """把旧版目录一次性迁移到新站点目录键。
+
+    旧版（_sanitize_filename 仅替换非法字符）把 MD 日志放在 <data_dir>/<原始域名>/ 下，
+    domain 字段保留 www.；新规范：目录用 _dir_key（去 www. + .转-），domain 字段用
+    _normalize_domain（仅去 www.，保留真实域名与点）。幂等：旧目录已重命名/不存在则跳过；
+    迁移失败仅打印不阻断，避免升级后 memory_store 无法导入。
+    """
+    global _MIGRATED
+    if _MIGRATED:
+        return
+    _MIGRATED = True
+    try:
+        root = data_dir()
+        reg = _load_registry()
+        if not reg:
+            return
+        dirty = False
+        for entry in reg.values():
+            old_domain = entry.get("domain", "")
+            new_domain = _normalize_domain(old_domain)
+            old_dir = root / _legacy_sanitize(old_domain)
+            new_dir = root / _dir_key(new_domain)
+            if old_dir != new_dir and old_dir.is_dir():
+                if new_dir.is_dir():
+                    # 目标已存在：并入旧目录文件（不覆盖同名），再尽量清空旧目录
+                    for f in old_dir.iterdir():
+                        if f.is_file():
+                            dst = new_dir / f.name
+                            if not dst.exists():
+                                f.rename(dst)
+                    try:
+                        old_dir.rmdir()
+                    except OSError:
+                        pass
+                else:
+                    old_dir.rename(new_dir)
+            # domain 字段：仅去 www.（保留点）
+            if entry.get("domain") != new_domain:
+                entry["domain"] = new_domain
+                dirty = True
+            # 重定位 md_path 并重写 MD 内的「域名」行
+            mp = entry.get("md_path", "")
+            if mp:
+                new_mp = root / _dir_key(new_domain) / Path(mp).name
+                if str(new_mp) != mp:
+                    entry["md_path"] = str(new_mp)
+                    dirty = True
+                p = new_mp
+                if p.is_file():
+                    txt = p.read_text(encoding="utf-8")
+                    txt2 = re.sub(r"^\- 域名: .*$", f"- 域名: {new_domain}", txt, count=1, flags=re.M)
+                    if txt2 != txt:
+                        p.write_text(txt2, encoding="utf-8")
+        if dirty:
+            _save_registry(reg)
+    except Exception as e:  # 迁移失败不阻断运行
+        print(f"[memory_store] 旧布局迁移未完成: {e}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -879,6 +960,10 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:  # noqa: BLE001
         print(f"错误: {e}", file=sys.stderr)
         return 1
+
+
+# 导入即执行一次（幂等）旧目录迁移：把域名目录重排到新站点目录键，并更新 registry 与 MD 域名行。
+_migrate_legacy_layout()
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ description: 读取 BoBo 全局环境清单（dbx-runtime/env-manifest.json）�
 
 当你要执行或生成涉及以下任一项的 Python 脚本 / 工具调用时，**先加载本技能并读取清单**：
 
-- 运行 Python 采集 / 逆向 / 提取入库脚本（`crawl_script/*.py`、`extraction_scripts/*.py`、`scripts/*.py`）；
+- 运行 Python 采集 / 逆向 / 提取入库脚本（`<工作区>/<站点键>/crawl_script/*.py`、`<工作区>/<站点键>/extraction_scripts/*.py`、`scripts/*.py`）；其中**站点键 = 域名去 www. + 点转横线**（如 news.qq.com→news-qq-com）。
 - 使用 Camoufox 浏览器 / 常驻浏览器服务；
 - 使用代理池（`/proxy`）定位其配置；
 - 定位数据库连接数据目录（dbx-runtime/data）或目标网站逆向脚本目录。
@@ -36,7 +36,7 @@ description: 读取 BoBo 全局环境清单（dbx-runtime/env-manifest.json）�
 | `pythonBin` | BoBo 虚拟环境 Python 解释器绝对路径（Windows 为 `.venv\Scripts\python.exe`）。**运行任何采集/提取脚本都用它**，保证有 camoufox / lxml / pymysql 等依赖。 |
 | `scriptsDir` | 采集/调试脚本目录（browser_server.py、proxy_pool.py、run_*.py 等）。 |
 | `dbxDataDir` | DBX 数据库连接数据目录（dbx-runtime/data，含 dbx.db）。提取脚本 `CONFIG.dbx_data_dir` 填这里。 |
-| `crawlScriptDir` | 已沉淀的网站逆向脚本目录（crawl_script/），批量采集时优先复用。 |
+| `crawlScriptDir` | 已沉淀的网站逆向脚本目录。**按站点归类在 `<工作区>/<站点键>/crawl_script/`**（站点键 = 域名去 www. + 点转横线），批量采集时优先复用；BoBo 根 `crawl_script/` 仅为历史/示例存量。 |
 | `proxyPoolConfig` | 代理池配置所在的 settings.yaml 路径与命名空间；用 `/proxy` 命令会话级开关。 |
 | `browserServer` | 常驻 Camoufox 浏览器服务的回环地址、端口派生规则与协议。浏览器由插件/工具自动拉起并常驻复用，**不要自行再启动新的 camoufox 进程**。 |
 | `camoufox` | 浏览器二进制就绪状态：`ready`（是否就绪）、`version`、`home`（缓存目录）、`executable`（可执行文件绝对路径）、`error`。 |
