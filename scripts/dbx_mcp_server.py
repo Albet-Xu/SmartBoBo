@@ -13,7 +13,7 @@ server 常驻内存，带 **连接池**与**表结构缓存**，替代工作流�
 - dbx_query(conn, sql)                  —— 仅允许只读 SELECT 的轻量查询
 
 复用 `~/.dsh/skills/db-extraction/dbx_connector.py`（连库/元数据/UPSERT 单一实现来源），
-用 `find_bobo_root()` 自动定位 BoBo 根目录、读取 dbx-runtime/data/dbx.db 的连接。
+优先用 DBX_DATA_DIR（桌面壳注入）定位 dbx.db，否则用 `find_bobo_root()` 定位 BoBo 根目录读取 dbx-runtime/data/dbx.db。
 由 dsh 的 `@deepseek-ai/dsh-mcp-client` 插件以 stdio 方式拉起。
 """
 from __future__ import annotations
@@ -54,8 +54,17 @@ def _root() -> Path:
     return _ROOT_CACHE[True]
 
 
+def _profiles() -> list[dict]:
+    """读取 DBX 连接列表。优先 DBX_DATA_DIR（桌面壳注入，安装版唯一可靠来源），
+    否则回落到含 dbx-runtime 的 BoBo 根目录。"""
+    data_dir = os.environ.get("DBX_DATA_DIR", "").strip()
+    if data_dir:
+        return dbx.load_profiles(db_path=Path(data_dir) / "dbx.db")
+    return dbx.load_profiles(bobo_root=_root())
+
+
 def _profile(conn_name: str):
-    profiles = dbx.load_profiles(bobo_root=_root())
+    profiles = _profiles()
     return dbx.find_profile(conn_name, profiles)
 
 
@@ -76,7 +85,7 @@ def dbx_list_connections() -> list[dict]:
         {k: v for k, v in p.items()
          if k not in ("password", "_id", "connection_string", "external_config",
                       "jdbc_driver_paths", "database_info")}
-        for p in dbx.load_profiles(bobo_root=_root())
+        for p in _profiles()
     ]
 
 

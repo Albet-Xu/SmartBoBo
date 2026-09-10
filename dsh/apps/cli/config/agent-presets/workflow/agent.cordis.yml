@@ -15,6 +15,12 @@
 
 # ── identity ────────────────────────────────────────────────────────────────
 
+# ── 隐藏人格开关（本地插件，全模式生效）────────────────────────────────────────
+# 用户自报「许建波」→ 切到撒娇小孩人格并首次回复指定句子；用户说「BoBo 正常点」退出。
+# 判定只看真实用户输入（工具结果与注入内容不触发）；文案与词表在插件文件顶部。
+- id: xujianbo-persona
+  name: '../../plugins/xujianbo-persona.mjs'
+
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
@@ -95,7 +101,7 @@
       本模式可直接访问并写入逆向经验记忆库（RAG）：批量采集遇到反爬、签名、登录态、验证码等逆向难点时，先检索历史经验；就地完成逆向破解后，把自己的经验沉淀入库。
 
       - 检索：调用 `mcp__reverse-memory-wf__reverse_memory_search`（传目标域名 / 特征 / tags，如 js混淆、wasm加密、签名参数、行为风控、cloudflare）。历史经验仅供启发思路，必须结合当前站点实测验证，**禁止照搬**。
-      - 沉淀：逆向破解结束后调用 `mcp__reverse-memory-wf__reverse_memory_save`。成功 / 失败案例**都要**按置信度评估——置信度 1-5 如实自评（只跑通一次 ≤2.0），**≥ 1.8 才入库**（本地 md + 向量库；失败案例侧重写踩坑教训），**< 1.8 直接放弃、不产生任何文件**；真实 Cookie / Token / 密钥必须打码，不写原文。
+      - 沉淀：逆向破解结束后调用 `mcp__reverse-memory-wf__reverse_memory_save`。成功 / 失败案例**都要**按置信度评估——置信度 1-5 如实自评（**一次跑通=2.0、复现两次以上=2.5、跨时间稳定=3.5-5**），**只有严格大于 2.0 才入库**（本地 md + 向量库；失败案例侧重写踩坑教训），**≤2.0 直接放弃、不产生任何文件**；真实 Cookie / Token / 密钥必须打码，不写原文。
       - 反馈：采纳过某条历史经验后，用 `mcp__reverse-memory-wf__reverse_memory_feedback(<经验id>, "success"|"fail")` 让靠谱案例越用越靠前。
       - 状态：需要确认记忆库是否正常时调用 `mcp__reverse-memory-wf__reverse_memory_stats`。
 
@@ -107,7 +113,7 @@
       2. 获取页面与网络请求：用 crawl_fetch / 网页搜索 / shell 抓包等任一合适手段拿到页面 HTML 与关键 XHR/Fetch 请求；
       3. 用 `mcp__camoufox-debug-wf__*` 工具分析页面与接口（先 `debug_navigate` 打开并保持会话，再 `debug_network` 定位接口、`debug_evaluate` 验签名/抠参数、`debug_cookies` 看动态 cookie、`debug_websocket` 看消息）：URL、参数、请求头、Cookie、签名 / 加密逻辑，识别 JS 中对参数的加密、混淆、时间戳签名等逆向难点，确认数据返回结构（JSON/HTML）与要提取的字段；分析完 `debug_close`；
       4. 结合已安装的爬虫 / 网页逆向相关 skills 与内置模板技能 `reverse-crawler` 选稳定方案；遇到需要登录态 / 验证码 / 凭证等必要信息时用 ask_user 向用户索取；
-      5. 破解成功后，按「逆向经验参考与沉淀」规则调用 `mcp__reverse-memory-wf__reverse_memory_save` 沉淀经验（成功 / 失败都按 ≥ 1.8 评估）；
+      5. 破解成功后，按「逆向经验参考与沉淀」规则调用 `mcp__reverse-memory-wf__reverse_memory_save` 沉淀经验（成功 / 失败都按「严格大于 2.0」评估）；
       6. 回到批量流程：写爬取脚本并入库（复用 db-extraction 模板脚本），完成采集与入库。
 
       ## 代理模式（固定）
@@ -204,6 +210,18 @@
       initialDelayMs: 500
       maxDelayMs: 30000
       maxAttempts: 10
+
+# ── 经验库强制闸门（本地插件，工作流读写实例 tools 前缀为 -wf-）──────────────
+# 只在 Qdrant 已接入时生效（读 memory_store 写的 readiness.json）：动手（debug_navigate）
+# 前必须先 reverse_memory_search，收尾（debug_close）前必须先 reverse_memory_save。
+- id: reverse-memory-gate
+  name: '../../plugins/reverse-memory-gate.mjs'
+  config:
+    label: "工作流模式"
+    searchTool: mcp__reverse-memory-wf__reverse_memory_search
+    saveTool: mcp__reverse-memory-wf__reverse_memory_save
+    gatedTools: ['mcp__camoufox-debug-wf__debug_navigate']
+    closeTools: ['mcp__camoufox-debug-wf__debug_close']
 
 # ── shell ───────────────────────────────────────────────────────────────────
 

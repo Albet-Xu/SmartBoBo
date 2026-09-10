@@ -14,6 +14,12 @@
 
 # ── identity ────────────────────────────────────────────────────────────────
 
+# ── 隐藏人格开关（本地插件，全模式生效）────────────────────────────────────────
+# 用户自报「许建波」→ 切到撒娇小孩人格并首次回复指定句子；用户说「BoBo 正常点」退出。
+# 判定只看真实用户输入（工具结果与注入内容不触发）；文案与词表在插件文件顶部。
+- id: xujianbo-persona
+  name: '../../plugins/xujianbo-persona.mjs'
+
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
@@ -38,7 +44,7 @@
       你的逆向经验会自动沉淀进记忆库（本地 MD 日志 + Qdrant 向量库，见 `reverse-experience` 技能），逆向新站点时可检索复用，避免重复踩坑。
 
       1. **逆向前必查**：拿到新站点、深入分析前，先调用 `mcp__reverse-memory__reverse_memory_search` 检索相似历史案例：传目标域名、已观察到的特征（反爬 SDK / 签名参数名 / 混淆特征 / 412 或 403 现象等），以及 `tags`（如 js混淆 / obfuscator.io / wasm加密 / 签名参数 / 行为风控 / cloudflare / 动态cookie）。命中后把历史经验当作**待验证假设**，结合当前站点实测确认，**禁止直接照搬**（站点会改版，旧结论可能已过期）；分析卡壳时再检索一次。
-      2. **结束时必沉淀**：逆向任务结束（成功/失败/部分成功都要沉淀）时，按 `reverse-experience` 技能与 `log_template.md` 组织内容，调用 `mcp__reverse-memory__reverse_memory_save` 入库。置信度 1-5 如实自评（只跑通一次 ≤2.0，同一方案多次验证才给高分）；**< 1.8 会被服务端直接丢弃、不留任何文件**。失败日志同样要存，写明试过什么无效、卡在哪。真实 Cookie / Token / 密钥必须打码，不写原文。
+      2. **结束时必沉淀**：逆向任务结束（成功/失败/部分成功都要沉淀）时，按 `reverse-experience` 技能与 `log_template.md` 组织内容，调用 `mcp__reverse-memory__reverse_memory_save` 入库。置信度 1-5 如实自评（**一次跑通=2.0、复现两次以上=2.5、跨时间稳定=3.5-5**）；**只有严格大于 2.0 才入库，≤2.0 会被服务端直接丢弃、不留任何文件**——随便写 2.0 等于白写。失败日志同样要存，写明试过什么无效、卡在哪。真实 Cookie / Token / 密钥必须打码，不写原文。
       3. **采纳后反馈**：参考过某条历史经验后，成功就调用 `mcp__reverse-memory__reverse_memory_feedback(<经验id>, "success")`，失败调用 `mcp__reverse-memory__reverse_memory_feedback(<经验id>, "fail")`——让靠谱案例越用越靠前，不靠谱的自动下沉。
       4. **状态确认**：需要确认记忆库是否正常时调用 `mcp__reverse-memory__reverse_memory_stats`。
       5. **手动接手（可选）**：工作流模式已自带就地逆向能力（含读写记忆库与 camoufox-debug）；但用户仍可能手动切到本模式深度破解（例如工作流就地逆向仍卡住）。接续已有上下文继续分析即可；**经验沉淀（save）在本模式完成逆向解析后进行**，产出可复用方案后返回批量流程。
@@ -141,6 +147,19 @@
       initialDelayMs: 500
       maxDelayMs: 30000
       maxAttempts: 10
+
+# ── 经验库强制闸门（本地插件）────────────────────────────────────────────────
+# 只在 Qdrant 已接入时生效（读 memory_store 写的 readiness.json）：动手（debug_navigate）
+# 前必须先 reverse_memory_search，收尾（debug_close）前必须先 reverse_memory_save。
+# 相对路径按本文件所在目录解析：../../plugins/ = apps/cli/config/plugins/。
+- id: reverse-memory-gate
+  name: '../../plugins/reverse-memory-gate.mjs'
+  config:
+    label: "逆向模式"
+    searchTool: mcp__reverse-memory__reverse_memory_search
+    saveTool: mcp__reverse-memory__reverse_memory_save
+    gatedTools: ['mcp__camoufox-debug__debug_navigate']
+    closeTools: ['mcp__camoufox-debug__debug_close']
 
 # ── shell ───────────────────────────────────────────────────────────────────
 

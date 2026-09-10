@@ -3,14 +3,16 @@
 
 模型可见工具（serverName=reverse-memory → mcp__reverse-memory__reverse_memory_*）：
 - reverse_memory_search(domain, tags, features, query, top_k)   —— 混合检索历史逆向经验
-- reverse_memory_save(...)                                      —— 沉淀一条逆向经验（置信度>=1.8 才入库）
+- reverse_memory_save(...)                                      —— 沉淀一条逆向经验（置信度【严格大于】2.0 才入库）
 - reverse_memory_feedback(experience_id, outcome)              —— 采纳反馈：成功+0.5 / 失败-0.5
 - reverse_memory_stats()                                        —— 库统计与 Qdrant 状态
 - reverse_memory_cleanup(dry_run)                              —— 冷归档未复用的旧案例
+- reverse_memory_sync()  —— 把本地未同步经验重新推送到当前 Qdrant
 
 只读模式：环境变量 REVERSE_MEMORY_READONLY=1 时（当前逆向/工作流预设均**未**启用，
 两模式均为读写实例），不注册 save / feedback / cleanup 三个写工具，模型只能查询；
 默认不设该环境变量即注册全量写工具。
+启动时会后台探活一次 Qdrant，把就绪状态写进 memory_store 的 readiness.json。
 
 核心实现单一来源：技能目录 memory_store.py（~/.dsh/skills/reverse-experience/
 > 项目 dsh/.agents/skills/reverse-experience/ > scripts/ 同目录 依次回退）。
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
 
 # ── 导入 memory_store（技能目录为单一实现来源；找不到时回退脚本同目录） ─────────
@@ -37,6 +40,20 @@ if str(_SKILL_DIR) not in sys.path:
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 import memory_store as store  # noqa: E402
+
+
+def _probe_readiness() -> None:
+    """启动即探活 Qdrant 并落盘 readiness.json（闸门插件据此判断是否强制检索/沉淀）。
+
+    放后台线程：探活超时默认 10s，不能拖慢 MCP 握手；失败只告警。
+    """
+    try:
+        store.probe_and_write_readiness()
+    except Exception as e:  # noqa: BLE001
+        print(f"[reverse-memory] 就绪探活失败: {e}", file=sys.stderr)
+
+
+threading.Thread(target=_probe_readiness, daemon=True).start()
 
 READONLY = store.is_readonly()
 
@@ -61,8 +78,8 @@ def reverse_memory_search(
     以及观察到的特征文本（如 "webmssdk / X-Bogus / a_bogus / 412"）。
 
     返回历史案例（含置信度、正向经验、失败教训、最终方案），仅作参考思路，
-    必须结合当前站点实测验证，禁止直接照搬。置信度 >= 1.8 才入库，检索只会
-    看到高置信案例。Qdrant 不可达时自动降级为本地检索（mode=local）。
+    必须结合当前站点实测验证，禁止直接照搬。只有置信度【严格大于】2.0 才入库，检索只会
+    看到达标案例。Qdrant 不可达时自动降级为本地检索（mode=local）。
 
     Args:
         domain: 目标域名（如 example.com），精确过滤优先
@@ -91,14 +108,17 @@ def reverse_memory_save(
     positive_lessons: list[str] | None = None,
     negative_lessons: list[str] | None = None,
     result: str = "SUCCESS",
-    confidence: float = 2.0,
+    # confidence 无默认值 → 生成的工具 schema 里为必填，强制模型显式自评；
+    # 它前面都是带默认值的位置参数，故只能用 `*` 让它成为必填的仅关键字参数。
+    *,
+    confidence: float,
     tools_used: list[str] | None = None,
     used_experience_ids: list[str] | None = None,
 ) -> dict:
     """沉淀一条逆向经验（自动入库）。
 
-    逆向任务结束（成功/失败都要沉淀）后调用。置信度 >= 1.8 才会入库
-    （本地 MD 日志 + Qdrant 向量）；< 1.8 直接放弃、不留任何文件。同域名同特征
+    逆向任务结束（成功/失败都要沉淀）后调用。只有置信度【严格大于】2.0 才会入库
+    （本地 MD 日志 + Qdrant 向量）；等于或低于 2.0 直接放弃、不留任何文件。同域名同特征
     指纹的旧案例自动去重替换，避免知识库膨胀。
 
     Args:
@@ -112,7 +132,7 @@ def reverse_memory_save(
         positive_lessons: 经验总结（正向），如 "碰到 x 特征优先做 AST 去混淆"
         negative_lessons: 教训总结（负向），如 "不要只改 UA，必须同步处理 TLS 指纹"
         result: SUCCESS / FAIL / PARTIAL_SUCCESS
-        confidence: 置信度 1-5（1=偶然结果，5=多次验证可靠），>= 1.8 才入库
+        confidence: 必填。置信度 1-5（1=偶然结果，5=多次验证可靠），只有【严格大于】2.0 才入库；一次跑通=2.0（会被丢弃），复现两次以上=2.5，跨时间稳定=3.5-5
         tools_used: 使用过的工具（js-reverse / camoufox / scrapling / AST 等）
         used_experience_ids: 本次参考过的历史经验 ID（用于后续反馈）
     """
@@ -131,7 +151,7 @@ def reverse_memory_feedback(experience_id: str, outcome: str = "success") -> dic
     """对采纳过的历史经验做正负反馈（置信度在线打分）。
 
     使用某条检索到的经验后调用：采纳且成功 → 该案例置信度 +0.5；采纳后失败
-    → -0.5（跌破 1.8 自动从向量库移除并归档）。让靠谱案例越用越靠前，不靠谱
+    → -0.5（跌到门槛 2.0 及以下自动从向量库移除并归档）。让靠谱案例越用越靠前，不靠谱
     案例慢慢下沉。
 
     Args:

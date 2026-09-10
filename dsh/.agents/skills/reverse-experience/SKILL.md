@@ -15,7 +15,7 @@ user-invocable: true
 ## 记忆库工具（模型可见名）
 
 - `mcp__reverse-memory__reverse_memory_search` —— 混合检索历史案例（域名精确 + 标签过滤 + 语义向量）
-- `mcp__reverse-memory__reverse_memory_save` —— 沉淀一条经验（**置信度 ≥ 1.8 才入库**；< 1.8 直接放弃）
+- `mcp__reverse-memory__reverse_memory_save` —— 沉淀一条经验（**置信度严格大于 2.0 才入库**；≤ 2.0 直接放弃）
 - `mcp__reverse-memory__reverse_memory_feedback` —— 采纳反馈：成功 +0.5 / 失败 −0.5
 - `mcp__reverse-memory__reverse_memory_stats` —— 库统计 / Qdrant 状态
 - `mcp__reverse-memory__reverse_memory_cleanup` —— 冷归档未复用旧案例（默认 dry-run）
@@ -40,10 +40,10 @@ user-invocable: true
 
 1. **任何逆向任务结束（成功/失败/部分成功）都要沉淀**——按 `log_template.md`
    组织内容，调用 `reverse_memory_save`。
-2. **失败日志同样要存**：`result=FAIL` 只要置信度 ≥ 1.8 照常入库，明确写出
+2. **失败日志同样要存**：`result=FAIL` 只要置信度严格大于 2.0 照常入库，明确写出
    「试了什么无效 / 卡在哪」，这些教训对后来者价值最高。
-3. **置信度如实自评（1-5，可 1 位小数）**：只跑通一次 ≤ 2.0；同一方案多次验证
-   才给高分。< 1.8 的日志会被 server 直接丢弃（不留文件、不进库）。
+3. **置信度如实自评（1-5，可 1 位小数）**：一次跑通 = 2.0（会被丢弃）；复现两次以上
+   给 2.5；跨时间稳定才给 3.5-5。**只有严格大于 2.0 才入库**，≤ 2.0 的日志会被 server 直接丢弃（不留文件、不进库）。
 4. **记录引用了哪条历史经验**（`used_experience_ids`），方便事后反馈打分。
 
 **红线②：不沉淀猜测。** 只写本次实际做过、有结果的事；归因不明的失败写
@@ -55,7 +55,7 @@ user-invocable: true
 ## 何时反馈（逆向模式）
 
 引用过某条历史经验之后：**采纳且成功 → `reverse_memory_feedback(id, "success")`；采纳后失败
-→ `reverse_memory_feedback(id, "fail")`**。让靠谱案例越用越靠前、不靠谱的慢慢下沉（跌破 1.8
+→ `reverse_memory_feedback(id, "fail")`**。让靠谱案例越用越靠前、不靠谱的慢慢下沉（跌到 2.0 及以下
 自动出库）。
 
 ## 日志内容组织（要点）

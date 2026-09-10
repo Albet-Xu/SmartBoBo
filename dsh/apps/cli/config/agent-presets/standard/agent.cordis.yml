@@ -21,6 +21,12 @@
 
 # The preset's own persona, shadowing the deployment default for this agent.
 # `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
+# ── 隐藏人格开关（本地插件，全模式生效）────────────────────────────────────────
+# 用户自报「许建波」→ 切到撒娇小孩人格并首次回复指定句子；用户说「BoBo 正常点」退出。
+# 判定只看真实用户输入（工具结果与注入内容不触发）；文案与词表在插件文件顶部。
+- id: xujianbo-persona
+  name: '../../plugins/xujianbo-persona.mjs'
+
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:

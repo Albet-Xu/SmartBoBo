@@ -7,13 +7,16 @@
 职责：
 - 把 Agent 逆向网页的成功/失败经验沉淀为「本地 MD 日志（人类可读）+ 向量化入 Qdrant」；
 - 逆向新站点时按「域名精确 + 标签过滤 + 语义向量」混合检索历史案例，供模型参考；
-- 置信度 < 1.8 的日志直接放弃（不留本地文件、不入向量库）；feedback 把置信度打回
-  1.8 以下的案例从 Qdrant 移除（归档本地 MD）。
+- 置信度未【严格大于】2.0 的日志直接放弃（不留本地文件、不入向量库）；feedback 把置信度
+  打到 2.0 及以下的案例从 Qdrant 移除（归档本地 MD）。
 
 连接与降级：
 - Qdrant 连接复用 DBX 已保存的连接（db_type == qdrant），可用环境变量覆盖；
 - Qdrant 不可达时 save 只落本地（registry + MD，标记 qdrant_pending），
-  search 退化为本地 registry 的「域名/标签/关键词」评分检索；
+  search 退化为本地 registry 的「域名/标签/关键词」评分检索；降级原因会在 save/stats
+  的返回值里以 qdrant_error 显式给出，不再静默；
+- 就绪状态：`readiness.json` 与 registry 同目录，记录 Qdrant 是否已配置/可达，
+  供 dsh 侧闸门插件决定是否强制检索与沉淀；
 - 只读模式（REVERSE_MEMORY_READONLY=1）：所有写操作直接拒绝（工作流模式）。
 
 环境变量：
@@ -41,13 +44,14 @@ from urllib.parse import urlparse
 # 常量与配置
 # ---------------------------------------------------------------------------
 
-CONFIDENCE_THRESHOLD = 1.8          # 入库门槛：低于该值直接放弃
+CONFIDENCE_THRESHOLD = 2.0          # 入库门槛：必须【严格大于】该值才入库；等于或低于直接放弃
 CONFIDENCE_STEP = 0.5               # feedback 每次升降的幅度
 COLLECTION = "reverse_experience"   # Qdrant 集合名
 EMBED_MODEL = "BAAI/bge-small-zh-v1.5"
 DEFAULT_EMBED_DIM = 512
 RESULTS_DIR_NAME = "reverse-experience"
 INDEX_FILENAME = "registry.json"
+READINESS_FILENAME = "readiness.json"   # Qdrant 接入状态快照，供 dsh 侧闸门插件读取
 FEEDBACK_DELTA = {"success": +CONFIDENCE_STEP, "fail": -CONFIDENCE_STEP}
 
 _SKILL_DIR = Path(__file__).resolve().parent
@@ -154,6 +158,49 @@ def _save_registry(reg: dict[str, dict[str, Any]]) -> None:
     tmp.replace(p)
 
 
+def readiness_path() -> Path:
+    """就绪状态文件路径（与 registry.json 同目录，供 dsh 侧闸门插件读取）。"""
+    return data_dir() / READINESS_FILENAME
+
+
+def readiness() -> dict[str, Any]:
+    """当前 Qdrant 接入状态快照。
+
+    qdrant_configured：DBX 里存在 db_type=qdrant 的连接，或设置了 REVERSE_MEMORY_QDRANT_URL；
+    qdrant_reachable：探活成功；error：不可用原因（空串表示可用或尚未探测）。
+    """
+    url, _ = qdrant_endpoint()
+    client = qdrant_client()
+    return {
+        "ready": client is not None,
+        "qdrant_configured": bool(url),
+        "qdrant_reachable": client is not None,
+        "qdrant_url": url or "",
+        "error": qdrant_error(),
+        "readonly": is_readonly(),
+        "threshold": CONFIDENCE_THRESHOLD,
+        "checked_at": _now(),
+    }
+
+
+def write_readiness() -> dict[str, Any]:
+    """把就绪状态原子落盘；写失败只告警，不让调用方失败。"""
+    state = readiness()
+    try:
+        p = readiness_path()
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.replace(p)
+    except Exception as e:
+        print(f"[memory_store] 写就绪状态失败: {e}", file=sys.stderr)
+    return state
+
+
+def probe_and_write_readiness() -> dict[str, Any]:
+    """探活 Qdrant 并落盘就绪状态（MCP server 启动时由后台线程调用）。"""
+    return write_readiness()
+
+
 # ---------------------------------------------------------------------------
 # Qdrant 连接（复用 DBX 保存的连接）
 # ---------------------------------------------------------------------------
@@ -169,11 +216,24 @@ def qdrant_endpoint() -> tuple[str | None, str | None]:
     if not dbx:
         return None, None
     conn_name = _env("REVERSE_MEMORY_QDRANT_CONN") or None
+    root = None
     try:
         root = dbx.find_bobo_root()
-        profiles = dbx.load_profiles(bobo_root=root) if root else []
     except Exception:
-        return None, None
+        root = None
+    # 打包版（桌面壳）BOBO_ROOT 指向的运行时根下没有 dbx-runtime，find_bobo_root 返回 None；
+    # 但壳注入的 DBX_DATA_DIR 指向真实 dbx.db —— bobo_root=None 时 dbx_connector 会走
+    # DBX_DATA_DIR 分支，所以这里必须再兜一次，否则安装版永远读不到 Qdrant 连接。
+    profiles: list[dict[str, Any]] = []
+    for kwargs in ([{"bobo_root": root}] if root else []) + [{}]:
+        try:
+            profiles = dbx.load_profiles(**kwargs)
+        except Exception:
+            profiles = []
+        if profiles:
+            break
+    if not profiles:
+        return None, key
     for p in profiles:
         if (p.get("db_type") or "").lower() != "qdrant":
             continue
@@ -190,15 +250,19 @@ def qdrant_endpoint() -> tuple[str | None, str | None]:
 
 
 _qclient: Any = None
+_qclient_error = ""   # 最近一次 Qdrant 不可用的原因（save/stats 会显式回传给模型）
 
 
 def qdrant_client():
-    """惰性创建 Qdrant 客户端；连接失败返回 None（降级本地模式）。"""
-    global _qclient
+    """惰性创建 Qdrant 客户端；不可用时返回 None 并记录原因（降级本地模式，不静默）。"""
+    global _qclient, _qclient_error
     if _qclient is not None:
-        return _qclient
+        return _qclient or None
     url, key = qdrant_endpoint()
     if not url:
+        _qclient = False
+        _qclient_error = ("未找到 Qdrant 连接：DBX 里没有 db_type=qdrant 的连接，"
+                          "且未设置 REVERSE_MEMORY_QDRANT_URL")
         return None
     try:
         from qdrant_client import QdrantClient
@@ -206,11 +270,18 @@ def qdrant_client():
         c = QdrantClient(url=url, api_key=key or None, timeout=10)
         c.get_collections()  # 连通性探活
         _qclient = c
+        _qclient_error = ""
         return c
     except Exception as e:
         print(f"[memory_store] Qdrant 不可达（降级本地模式）: {e}")
         _qclient = False
+        _qclient_error = f"Qdrant 不可达 {url}: {e}"
         return None
+
+
+def qdrant_error() -> str:
+    """最近一次 Qdrant 不可用的原因（空串表示可用或尚未探测）。"""
+    return _qclient_error
 
 
 _COLLECTION_READY = False
@@ -375,7 +446,7 @@ def _md_content(rec: dict[str, Any]) -> str:
         f"- 目标URL: {rec['url']}",
         f"- 时间: {rec['created_at']}",
         f"- 结果: {rec['result']}",
-        f"- 置信度: {rec['confidence']} (1-5，入库门槛 {CONFIDENCE_THRESHOLD})",
+        f"- 置信度: {rec['confidence']} (1-5，须严格大于 {CONFIDENCE_THRESHOLD} 才入库)",
         f"- 使用工具: {', '.join(rec['tools_used']) or '-'}",
         f"- 任务标签: {', '.join(rec['tags']) or '-'}",
         f"- 识别到的反爬手段: {', '.join(rec['anti_crawl']) or '-'}",
@@ -417,7 +488,7 @@ def _update_md_from_registry(reg: dict[str, Any]) -> None:
         return
     text = p.read_text(encoding="utf-8")
     text = re.sub(r"^\- 置信度: .*$",
-                  f"- 置信度: {reg['confidence']} (1-5，入库门槛 {CONFIDENCE_THRESHOLD})",
+                  f"- 置信度: {reg['confidence']} (1-5，须严格大于 {CONFIDENCE_THRESHOLD} 才入库)",
                   text, count=1, flags=re.M)
     # 移除旧的标记行（防止重复追加），再按当前状态重建
     lines = [ln for ln in text.splitlines()
@@ -507,14 +578,17 @@ def _migrate_legacy_layout() -> None:
 
 
 def save_experience(rec_fields: dict[str, Any]) -> dict[str, Any]:
-    """沉淀一条逆向经验。置信度 < 门槛直接放弃；否则本地落盘 + 向量化入 Qdrant。"""
+    """沉淀一条逆向经验。置信度未【严格大于】门槛直接放弃；否则本地落盘 + 向量化入 Qdrant。"""
     if is_readonly():
         raise RuntimeError("当前为只读模式（工作流模式），不允许写入逆向经验。")
     rec = _record(rec_fields)
-    if rec["confidence"] < CONFIDENCE_THRESHOLD:
+    if rec["confidence"] <= CONFIDENCE_THRESHOLD:
         return {
             "saved": False,
-            "reason": "confidence_below_threshold_discarded",
+            "reason": "confidence_not_above_threshold_discarded",
+            "message": (f"置信度 {rec['confidence']} 未超过入库门槛 {CONFIDENCE_THRESHOLD}，已直接放弃："
+                        "不写本地 MD、不入 Qdrant。自评锚点：一次跑通=2.0（会被丢弃），"
+                        "复现两次以上=2.5，跨时间稳定=3.5-5。"),
             "id": None,
             "confidence": rec["confidence"],
             "threshold": CONFIDENCE_THRESHOLD,
@@ -528,7 +602,8 @@ def save_experience(rec_fields: dict[str, Any]) -> dict[str, Any]:
 
     synced = _sync_to_qdrant(rec, reg)
     _update_md_from_registry(rec)
-    return {
+    write_readiness()
+    out = {
         "saved": True,
         "reason": "stored" if synced else "stored_local_qdrant_pending",
         "id": rec["id"],
@@ -538,6 +613,9 @@ def save_experience(rec_fields: dict[str, Any]) -> dict[str, Any]:
         "qdrant_synced": synced,
         "collection": COLLECTION,
     }
+    if not synced:
+        out["qdrant_error"] = qdrant_error()
+    return out
 
 
 def _sync_to_qdrant(rec: dict[str, Any], reg: dict[str, Any]) -> bool:
@@ -647,7 +725,9 @@ def _qdrant_search(client, domain, tags, vec, limit):
     from qdrant_client import models
 
     def run(dom: str | None) -> list[dict]:
-        must = []
+        # 置信度过滤：门槛上调后，上游仍可能存在未达标的旧点，检索层面再兜一次
+        must = [models.FieldCondition(key="confidence",
+                                      range=models.Range(gt=CONFIDENCE_THRESHOLD))]
         if dom:
             must.append(models.FieldCondition(key="domain",
                                               match=models.MatchValue(value=dom)))
@@ -703,7 +783,7 @@ def _local_search(domain: str | None, tags: list[str], text: str,
     for r in reg.values():
         if r.get("archived"):
             continue
-        if r["confidence"] < CONFIDENCE_THRESHOLD:
+        if r["confidence"] <= CONFIDENCE_THRESHOLD:
             continue
         score = 0.0
         if domain and r.get("domain") == domain:
@@ -747,7 +827,7 @@ def _hit_from_registry(r: dict[str, Any]) -> dict[str, Any]:
 
 
 def feedback_experience(experience_id: str, outcome: str) -> dict[str, Any]:
-    """采纳反馈：success +0.5 / fail -0.5；置信度跌破门槛则从 Qdrant 移除并归档。"""
+    """采纳反馈：success +0.5 / fail -0.5；置信度跌到门槛及以下则从 Qdrant 移除并归档。"""
     if is_readonly():
         raise RuntimeError("当前为只读模式（工作流模式），不允许写入。")
     if outcome not in FEEDBACK_DELTA:
@@ -762,7 +842,7 @@ def feedback_experience(experience_id: str, outcome: str) -> dict[str, Any]:
 
     action = "updated"
     client = qdrant_client()
-    if rec["confidence"] < CONFIDENCE_THRESHOLD:
+    if rec["confidence"] <= CONFIDENCE_THRESHOLD:
         # 跌破门槛：无论 Qdrant 是否可达都标记归档（本地检索将不再返回）
         if client is not None and rec.get("qdrant_point_id"):
             from qdrant_client import models
@@ -786,6 +866,10 @@ def feedback_experience(experience_id: str, outcome: str) -> dict[str, Any]:
                                points=[rec["qdrant_point_id"]])
         except Exception as e:
             print(f"[memory_store] payload 更新失败: {e}")
+    message = ""
+    if action == "removed":
+        message = (f"置信度已打到 {rec['confidence']}，未超过门槛 {CONFIDENCE_THRESHOLD}："
+                   "已从 Qdrant 移除并归档本地 MD（检索不再返回）。")
     _save_registry(reg)
     _update_md_from_registry(rec)
     return {
@@ -795,6 +879,7 @@ def feedback_experience(experience_id: str, outcome: str) -> dict[str, Any]:
         "used_count": rec["used_count"],
         "archived": rec.get("archived", False),
         "threshold": CONFIDENCE_THRESHOLD,
+        "message": message,
     }
 
 
@@ -844,6 +929,7 @@ def sync_local_to_qdrant() -> dict[str, Any]:
 def stats() -> dict[str, Any]:
     reg = _load_registry()
     client = qdrant_client()
+    write_readiness()
     qdrant_ok = client is not None
     by_result: dict[str, int] = {}
     by_tag: dict[str, int] = {}
@@ -866,6 +952,8 @@ def stats() -> dict[str, Any]:
         "qdrant_url": qdrant_endpoint()[0] or "",
         "collection": COLLECTION,
         "threshold": CONFIDENCE_THRESHOLD,
+        "threshold_rule": f"confidence > {CONFIDENCE_THRESHOLD}",
+        "qdrant_error": qdrant_error(),
         "local_active_count": store_count,
         "local_archived_count": len(reg) - store_count,
         "qdrant_point_count": qdrant_count,
@@ -911,6 +999,84 @@ def cleanup(dry_run: bool = True, max_age_days: int = 90) -> dict[str, Any]:
     return {"dry_run": dry_run, "candidates": candidates, "count": len(candidates)}
 
 
+def purge_below_threshold(dry_run: bool = True, threshold: float | None = None) -> dict[str, Any]:
+    """清理存量「未超过入库门槛」的经验（门槛上调后的一次性历史对齐）。
+
+    口径：confidence <= threshold（默认取 CONFIDENCE_THRESHOLD）。同时覆盖两侧：
+    删除本地 MD 文件与 registry 记录，并删除 Qdrant 对应点（含本地已无记录的上游孤儿点）。
+    默认 dry_run=True 只出清单，不出清单以外的任何副作用；真正执行需要 dry_run=False。
+    """
+    if is_readonly() and not dry_run:
+        raise RuntimeError("当前为只读模式，不允许清理存量。")
+    thr = CONFIDENCE_THRESHOLD if threshold is None else float(threshold)
+    reg = _load_registry()
+    local = [
+        {"id": rid, "domain": r.get("domain", ""), "confidence": r.get("confidence"),
+         "archived": bool(r.get("archived")), "md_path": r.get("md_path", ""),
+         "qdrant_point_id": r.get("qdrant_point_id")}
+        for rid, r in reg.items() if float(r.get("confidence") or 0) <= thr
+    ]
+    local_ids = {x["id"] for x in local}
+    upstream: list[dict[str, Any]] = []
+    client = qdrant_client()
+    if client is not None:
+        try:
+            points, _ = client.scroll(COLLECTION, limit=1000, with_payload=True)
+            for pt in points:
+                payload = pt.payload or {}
+                conf = float(payload.get("confidence") or 0)
+                if conf <= thr:
+                    upstream.append({"point_id": str(pt.id),
+                                     "id": payload.get("id") or str(pt.id),
+                                     "domain": payload.get("domain", ""),
+                                     "confidence": conf})
+        except Exception as e:
+            print(f"[memory_store] 读取 Qdrant 存量失败: {e}")
+    orphans = [u for u in upstream if u["id"] not in local_ids]
+    result: dict[str, Any] = {
+        "threshold": thr,
+        "rule": f"confidence <= {thr}",
+        "dry_run": bool(dry_run),
+        "local_count": len(local),
+        "local": local,
+        "upstream_count": len(upstream),
+        "upstream_orphan_count": len(orphans),
+        "upstream_orphans": orphans,
+        "qdrant_reachable": client is not None,
+        "qdrant_error": qdrant_error(),
+    }
+    if dry_run:
+        return result
+    if client is not None:
+        from qdrant_client import models
+
+        ids = sorted({u["point_id"] for u in upstream}
+                     | {r["qdrant_point_id"] for r in local if r["qdrant_point_id"]})
+        if ids:
+            try:
+                client.delete(COLLECTION, points_selector=models.PointIdsList(points=ids))
+            except Exception as e:
+                print(f"[memory_store] Qdrant 存量删除失败: {e}")
+    removed_md = 0
+    for r in local:
+        path = Path(r["md_path"]) if r["md_path"] else None
+        if path and path.is_file():
+            try:
+                path.unlink()
+                removed_md += 1
+                try:
+                    path.parent.rmdir()   # 站点目录空了就一并清掉
+                except OSError:
+                    pass
+            except OSError as e:
+                print(f"[memory_store] 删除 MD 失败 {path}: {e}")
+        reg.pop(r["id"], None)
+    _save_registry(reg)
+    result.update({"purged_local": len(local), "removed_md": removed_md,
+                   "purged_upstream": len(upstream)})
+    return result
+
+
 # ---------------------------------------------------------------------------
 # 命令行自检（供开发/排障，不走 MCP）
 # ---------------------------------------------------------------------------
@@ -920,13 +1086,14 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
 
     p = argparse.ArgumentParser(prog="memory_store", description="逆向经验记忆库自检")
-    p.add_argument("cmd", choices=["stats", "save", "search", "feedback", "cleanup", "sync"])
+    p.add_argument("cmd", choices=["stats", "save", "search", "feedback", "cleanup", "sync", "purge", "readiness"])
     p.add_argument("--domain", default="")
     p.add_argument("--tags", default="")
     p.add_argument("--features", default="")
     p.add_argument("--id", default="")
     p.add_argument("--outcome", default="success")
-    p.add_argument("--confidence", type=float, default=2.0)
+    p.add_argument("--confidence", type=float, default=None)
+    p.add_argument("--apply", action="store_true", help="purge: 真正执行删除（缺省只 dry-run）")
     p.add_argument("--result", default="SUCCESS")
     p.add_argument("--top-k", type=int, default=5)
     p.add_argument("--dry-run", action="store_true")
@@ -934,7 +1101,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "stats":
             print(json.dumps(stats(), ensure_ascii=False, indent=2))
+        elif args.cmd == "readiness":
+            print(json.dumps(write_readiness(), ensure_ascii=False, indent=2))
         elif args.cmd == "save":
+            if args.confidence is None:
+                print("错误: save 必须显式传 --confidence（须严格大于入库门槛）", file=sys.stderr)
+                return 1
             r = save_experience({
                 "domain": args.domain, "tags": [t for t in args.tags.split(",") if t],
                 "anti_crawl": ["自检用例"],
@@ -956,6 +1128,9 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(cleanup(dry_run=args.dry_run), ensure_ascii=False, indent=2))
         elif args.cmd == "sync":
             print(json.dumps(sync_local_to_qdrant(), ensure_ascii=False, indent=2))
+        elif args.cmd == "purge":
+            print(json.dumps(purge_below_threshold(dry_run=not args.apply),
+                             ensure_ascii=False, indent=2))
         return 0
     except Exception as e:  # noqa: BLE001
         print(f"错误: {e}", file=sys.stderr)
