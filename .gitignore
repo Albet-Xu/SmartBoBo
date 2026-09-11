@@ -26,8 +26,12 @@ data/*
 */data/*
 !*/data/.gitkeep
 
-# ── DBX 数据库运行时：二进制 / 前端dist / 数据库数据 入库（居家拉取即用）；仅运行日志不入库 ──
+# ── DBX 数据库运行时：二进制 / 前端dist 入库（居家拉取即用）；仅运行日志不入库 ──
+# 重要：dbx.db 内含各数据库连接口令与 Qdrant API Key，涉及公网仓库安全问题，绝不再入库！
 dbx-runtime/*.log
+dbx-runtime/data/dbx.db
+dbx-runtime/data/dbx.db-wal
+dbx-runtime/data/dbx.db-shm
 
 # ── 临时文件/文档 ──────────────────────────────────────────────────────
 *.tmp
