@@ -1,6 +1,6 @@
 {
   "name": "bobo-desktop",
-  "version": "1.4.3",
+  "version": "1.4.5",
   "description": "BoBo 智能采集平台 · 桌面版（Electron 原生窗口）",
   "main": "main.js",
   "author": "BoBo",
@@ -30,6 +30,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "seed-skills.js",
+      "userdata-repair.js",
       "splash.html"
     ],
     "extraResources": [
@@ -108,7 +110,9 @@
         "to": "runtime/camoufox",
         "filter": [
           "**/*",
-          "!**/browsers/official/152.0.4-beta.28-*/**"
+          "!**/browsers/official/152.0.4-beta.28-*/**",
+          "!**/browsers/official/152.0.4-beta.29-*/**",
+          "!**/SkeletonUILock*"
         ]
       },
       {

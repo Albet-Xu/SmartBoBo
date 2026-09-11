@@ -7,6 +7,8 @@ const path = require('node:path')
 const fs = require('node:fs')
 const os = require('node:os')
 const http = require('node:http')
+const { seedSkills: seedBuiltinSkills } = require('./seed-skills')
+const { repairCredentialsFile } = require('./userdata-repair')
 
 const isDev = !app.isPackaged
 // 打包后运行时载荷位于 resources/runtime；开发时直接用仓库根目录。
@@ -117,22 +119,23 @@ function fixVenvPython() {
 }
 
 /**
- * 首启把随包内置技能（runtime/skills）按需落到 DSH_HOME/skills。
- * 只补缺、不覆盖：用户自装/自改的技能保留；同名技能目录已存在则跳过。
+ * 首启把随包内置技能（runtime/skills）播种到 DSH_HOME/skills。
+ * 版本感知的覆盖式播种：技能源内容变了（用 .seeded.json 里的哈希比对）才覆盖，
+ * 用户在内置技能里新增的文件一律保留；任何失败都不阻塞启动。
  */
 function seedSkills() {
-  const src = path.join(projectRoot, 'skills')
-  const targetRoot = path.join(process.env.DSH_HOME || '', 'skills')
-  if (!fs.existsSync(src) || !targetRoot) return
   try {
-    for (const name of fs.readdirSync(src)) {
-      const from = path.join(src, name)
-      const to = path.join(targetRoot, name)
-      if (!fs.statSync(from).isDirectory()) continue
-      if (!fs.existsSync(to)) fs.cpSync(from, to, { recursive: true })
-    }
+    const res = seedBuiltinSkills({
+      src: path.join(projectRoot, 'skills'),
+      targetRoot: process.env.DSH_HOME ? path.join(process.env.DSH_HOME, 'skills') : '',
+      version: app.getVersion(),
+      log: (line) => console.log(line),
+    })
+    if (res.copied.length) console.log(`[seedSkills] copied ${res.copied.length}: ${res.copied.join(', ')}`)
+    if (res.updated.length) console.log(`[seedSkills] updated ${res.updated.length}: ${res.updated.join(', ')}`)
+    if (res.failed.length) console.log(`[seedSkills] failed ${res.failed.length}: ${res.failed.join(', ')}`)
   } catch (err) {
-    console.warn(`[seedSkills] 内置技能复制失败（不影响启动）: ${err.message}`)
+    console.warn(`[seedSkills] 内置技能播种失败（不影响启动）: ${err.message}`)
   }
 }
 
@@ -348,6 +351,9 @@ app.whenReady().then(async () => {
   setEnv()
   fixVenvPython()
   seedSkills()
+  // 老版本遗留的用户数据可能在启动期被新版解析器拒绝（如 .credentials.yaml 里的
+  // 非字符串 version 行会让整个插件树加载失败、表现为空白窗口），启动前先修复。
+  repairCredentialsFile({ dshHome: process.env.DSH_HOME, log: (line) => console.log(line) })
   // 1) 立即显示启动进度窗口：双击图标马上有反馈，不再“无反应”。
   win = new BrowserWindow({
     width: 420,
