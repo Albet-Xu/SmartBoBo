@@ -25,14 +25,20 @@ import threading
 from pathlib import Path
 
 # ── 导入 memory_store（技能目录为单一实现来源；找不到时回退脚本同目录） ─────────
-# 查找顺序：DSH_HOME（桌面壳/打包版用户数据根）> 旧 ~/.dsh > 项目 .agents > 脚本同目录。
+# 查找顺序：DSH_HOME（桌面壳/打包版用户数据根）> BOBO_ROOT/skills（打包版随包）
+# > 旧 ~/.dsh > 项目 .agents > 脚本同目录。
 _dsh_home = os.environ.get("DSH_HOME")
 _SKILL_DIR = Path(_dsh_home) / "skills" / "reverse-experience" if _dsh_home else None
+_bobo_root = os.environ.get("BOBO_ROOT")
+if not _SKILL_DIR or not _SKILL_DIR.is_dir():
+    _SKILL_DIR = Path(_bobo_root) / "skills" / "reverse-experience" if _bobo_root else None
 if not _SKILL_DIR or not _SKILL_DIR.is_dir():
     _SKILL_DIR = Path.home() / ".dsh" / "skills" / "reverse-experience"
 if not _SKILL_DIR.is_dir():
     _SKILL_DIR = Path(__file__).resolve().parent.parent / "dsh" / ".agents" / "skills" / "reverse-experience"
 if not _SKILL_DIR.is_dir():
+    # 打包版 BOBO_ROOT 指向 runtime，skills 随包存在：即使 DSH_HOME/旧 ~/.dsh 都没有，
+    # 干净机器也能兜底命中，避免 reverse-memory 起不来。
     _SKILL_DIR = Path(__file__).resolve().parent
 if str(_SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(_SKILL_DIR))

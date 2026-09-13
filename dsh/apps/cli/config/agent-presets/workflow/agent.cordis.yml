@@ -182,6 +182,17 @@
     command: ../.venv/Scripts/python.exe
     args: ['../scripts/reverse_memory_server.py']
     cwd: !!js process.cwd()
+    # MCP 子进程的环境会被 dsh 清洗（丢弃 DSH_* 与命中 KEY/PASSWORD/SECRET/TOKEN 的变量），
+    # 这里显式回传后端进程里的关键路径/覆盖变量：否则安装版读不到 DBX、数据目录错位、API Key
+    # 环境变量覆盖失效。显式 env 在清洗之后合并，是 harness 允许的通道。
+    env:
+      DSH_HOME: !!js process.env.DSH_HOME || ''
+      BOBO_ROOT: !!js process.env.BOBO_ROOT || ''
+      DBX_DATA_DIR: !!js process.env.DBX_DATA_DIR || ''
+      REVERSE_MEMORY_QDRANT_URL: !!js process.env.REVERSE_MEMORY_QDRANT_URL || ''
+      REVERSE_MEMORY_QDRANT_API_KEY: !!js process.env.REVERSE_MEMORY_QDRANT_API_KEY || ''
+      REVERSE_MEMORY_QDRANT_CONN: !!js process.env.REVERSE_MEMORY_QDRANT_CONN || ''
+      REVERSE_MEMORY_READONLY: !!js process.env.REVERSE_MEMORY_READONLY || ''
     toolCallTimeoutMs: 60000
     reconnect:
       enabled: true

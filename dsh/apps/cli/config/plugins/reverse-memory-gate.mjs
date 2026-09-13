@@ -14,8 +14,9 @@
  * 挂载：`agent-presets/{reverse,workflow}/agent.cordis.yml`，相对路径装载；config 全部可选。
  * 排障：后端日志里 grep `reverse-memory-gate`——挂载成功、放行、Qdrant 配了但不可达都会留痕。
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 export const name = 'reverse-memory-gate'
@@ -86,15 +87,24 @@ export function sameSite(a, b) {
 
 /**
  * readiness.json 的路径：与 memory_store.data_dir() 保持同一口径。
+ *
+ * memory_store 可能在 DSH_HOME 侧（打包版正常）、BOBO_ROOT/bobo-data 或旧 ~/bobo-data
+ * 落盘（早期/环境被清洗/未注入 DSH_HOME 时），这里按 候选根 → 第一个真实存在 的原则取，
+ * 避免两侧路径不一致让闸门静默失效（永远 fail-open）。
  * @param env - 环境变量来源（默认 process.env）。
- * @returns 就绪状态文件的绝对路径。
+ * @returns 就绪状态文件的绝对路径（候选都取不到时回到 DSH_HOME 优先的默认路径，仅作日志展示）。
  */
 export function readinessPath(env = process.env) {
   const dshHome = String(env.DSH_HOME || '').trim()
-  const root = dshHome
-    ? dirname(dshHome)
-    : join(String(env.BOBO_ROOT || process.cwd()), 'bobo-data')
-  return join(root, 'reverse-experience', 'readiness.json')
+  const roots = []
+  if (dshHome) roots.push(dirname(dshHome))
+  roots.push(join(String(env.BOBO_ROOT || process.cwd()), 'bobo-data'))
+  roots.push(join(homedir(), 'bobo-data'))
+  for (const root of roots) {
+    const p = join(root, 'reverse-experience', 'readiness.json')
+    if (existsSync(p)) return p
+  }
+  return join((dshHome ? dirname(dshHome) : roots[1]), 'reverse-experience', 'readiness.json')
 }
 
 /**

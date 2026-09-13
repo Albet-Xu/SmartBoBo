@@ -24,7 +24,8 @@ description: 读取 BoBo 全局环境清单（dbx-runtime/env-manifest.json）�
 <BoBo根目录>/dbx-runtime/env-manifest.json
 ```
 
-- **BoBo 根目录**：环境变量 `BOBO_ROOT` 指向的目录；或含 `dbx-runtime` 子目录的目录；常见如 `E:/SmartBoBo`、`D:/SmartBoBo`、`~/SmartBoBo`。
+- **BoBo 根目录**：环境变量 `BOBO_ROOT` 指向的目录；或含 `dbx-runtime`（打包版为 `dbx`）子目录的目录；常见如 `E:/SmartBoBo`、`D:/SmartBoBo`、`~/SmartBoBo`。
+- **打包版特别注意**：安装包里 `BOBO_ROOT` 指向 `<安装目录>/<应用名>/resources/runtime`（深层相对路径，不是 BoBoData）。清单即 `<BOBO_ROOT>/dbx-runtime/env-manifest.json`（启动时由桌面壳在 runtime 与数据根两处自动生成，实际都指向 runtime）。**读取前先按环境变量 `BOBO_ROOT` 定位清单，不要猜测为 `BoBoData`**。
 - 定位方法：优先读 `BOBO_ROOT` 环境变量；否则在文件系统中找含 `dbx-runtime` 的目录。生成提取脚本时也可参考 db-extraction 技能的 `find_bobo_root`。
 
 ## 如何读取清单

@@ -64,15 +64,17 @@ def _common_bobo_candidates() -> list[Path]:
 
 
 def find_bobo_root(start: str | None = None) -> Path | None:
-    """定位 BoBo 根目录（含 `dbx-runtime` 的目录）。
+    """定位 BoBo 根目录（含 `dbx-runtime` 或打包版 `dbx` 数据区的目录）。
 
     查找顺序：环境变量 BOBO_ROOT > 从 start/当前目录向上找 > 常见安装位置候选。
     均未命中返回 None，由调用方给出带 `--bo-bo-root` 的指引。
+    打包版安装后运行时根下是 `dbx/`（不是 `dbx-runtime/`），这里一并识别，
+    避免安装版在缺 DBX_DATA_DIR 环境下找不到 dbx.db。
     """
     # 环境变量优先（在 BoBo/dsh 内运行或脚本指定时最稳）
     if _env("BOBO_ROOT"):
         p = Path(_env("BOBO_ROOT")).resolve()
-        if (p / "dbx-runtime").is_dir():
+        if _is_bobo_root(p):
             return p
     # 从显式 start / 当前目录向上逐级找
     candidates: list[Path] = []
@@ -82,16 +84,23 @@ def find_bobo_root(start: str | None = None) -> Path | None:
     for base in candidates:
         cur = base
         for _ in range(15):
-            if (cur / "dbx-runtime").is_dir():
+            if _is_bobo_root(cur):
                 return cur
             if cur.parent == cur:
                 break
             cur = cur.parent
     # 常见安装位置候选兜底
     for cand in _common_bobo_candidates():
-        if (cand / "dbx-runtime").is_dir():
+        if _is_bobo_root(cand):
             return cand
     return None
+
+
+def _is_bobo_root(p: Path) -> bool:
+    """判定一个目录是否为 BoBo 根：含 dbx-runtime，或打包版 dbx 数据区（带 dbx-web.exe + data/dbx.db）。"""
+    if (p / "dbx-runtime").is_dir():
+        return True
+    return ((p / "dbx" / "data" / "dbx.db").is_file() and (p / "dbx" / "dbx-web.exe").is_file())
 
 
 def dbx_db_path(bobo_root: Path | None = None, override: str | None = None) -> Path:

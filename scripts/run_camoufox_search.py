@@ -20,11 +20,17 @@
 import argparse
 import asyncio
 import json
+import re
 import sys
+from pathlib import Path
 from urllib.parse import quote
 
 from camoufox.async_api import AsyncCamoufox
 from camoufox import DefaultAddons
+
+# 复用环境清单的 camoufox 就绪探测 / 可执行路径（本脚本以 `python scripts/run_camoufox_search.py`
+# 方式运行，scripts/ 已在 sys.path），避免 camoufox 在二进制缺失时于运行时静默联网重新下载。
+import gen_env_manifest
 
 # 每个引擎的：搜索 URL 模板、结果容器选择器、标题/链接、摘要选择器。
 ENGINES = {
@@ -74,9 +80,19 @@ async def fetch_sources(page, engine: str, max_results: int) -> tuple[list[dict]
 
 async def run(query: str, engine: str, max_results: int) -> dict:
     spec = ENGINES[engine]
+    # 固定使用随包运行时里的自带内核，并显式喂主版本：让 launch_options 跳过
+    # installed_verstr()/launch_path()（二者依赖 %LOCALAPPDATA% 用户缓存，全新机上为空
+    # 会误报 "official/stable is not installed"），并避免二进制缺失时静默联网下载。
+    exe = gen_env_manifest.camoufox_executable()
+    if not exe:
+        return {'error': 'camoufox 浏览器二进制未就绪（请先运行 `python scripts/gen_env_manifest.py --ensure-camoufox` 受控预铺）'}
+    m = re.match(r"^(\d+)", Path(exe).parent.name)
+    ff_version = m.group(1) if m else "152"
     async with AsyncCamoufox(
         headless=True,
         exclude_addons=[DefaultAddons.UBO],
+        executable_path=exe,
+        ff_version=ff_version,
     ) as browser:
         page = await browser.new_page()
         try:

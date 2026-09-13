@@ -58,8 +58,13 @@ _SKILL_DIR = Path(__file__).resolve().parent
 
 # ── dbx_connector 单一实现来源（用户级技能优先，回退项目技能/脚本目录） ─────────
 _DSH_HOME = Path(os.environ["DSH_HOME"]) if os.environ.get("DSH_HOME") else None
+_BOBO_ROOT = Path(os.environ["BOBO_ROOT"]) if os.environ.get("BOBO_ROOT") else None
 _DBX_CONNECTOR_CANDIDATES = (
     *((_DSH_HOME / "skills" / "db-extraction" / "dbx_connector.py",) if _DSH_HOME else ()),
+    # 打包版 BOBO_ROOT 指向 runtime，其下 skills/db-extraction 随包存在；
+    # DSH_HOME 被 MCP 子进程清洗时仍能兜底命中，避免干净机器读不到 dbx.db。
+    *((_BOBO_ROOT / "skills" / "db-extraction" / "dbx_connector.py",)
+      if (_BOBO_ROOT and (_BOBO_ROOT / "skills" / "db-extraction" / "dbx_connector.py").is_file()) else ()),
     Path.home() / ".dsh" / "skills" / "db-extraction" / "dbx_connector.py",
     Path(__file__).resolve().parent.parent / "db-extraction" / "dbx_connector.py",
     Path(__file__).resolve().parent.parent.parent / "scripts" / "dbx_connector.py",
@@ -123,15 +128,42 @@ def bobo_root() -> Path | None:
     return None
 
 
+def _packaged_data_root() -> Path | None:
+    """打包版数据根：从本文件向上找「含 resources/runtime 的安装束」，取其同级的 BoBoData。
+
+    安装包布局：<安装目录>/<应用名>/resources/runtime/...（本文件位于其中）。
+    main.js 的 dataRoot = <应用名>/../BoBoData，即安装束（含 resources 的目录）的
+    上一级下的 BoBoData。当 MCP 子进程环境被清洗、又没有 DSH_HOME 时，据此推导，
+    绝不落到用户主目录。
+    """
+    cur = Path(__file__).resolve()
+    for _ in range(20):
+        if (cur / "resources" / "runtime").is_dir():
+            sibling = cur.parent / "BoBoData"
+            return sibling if sibling.is_dir() else None
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return None
+
+
 def data_dir() -> Path:
     # DSH_HOME（桌面壳/打包版用户数据根）优先：数据存到 DSH_HOME 同级
     # reverse-experience，开发（bobo-data）与打包（BoBoData）布局一致；
-    # 无 DSH_HOME 时回退旧逻辑（BoBo 根 bobo-data / 用户主目录）。
+    # 无 DSH_HOME 时先按打包布局推断数据根，再回退 BoBo 根 bobo-data；
+    # 绝不静默落到用户主目录（否则经验会错位写到 C:\Users\<名>\bobo-data）。
     if _env("DSH_HOME"):
         base = Path(_env("DSH_HOME")).parent
     else:
-        root = bobo_root()
-        base = root / "bobo-data" if root else Path.home() / "bobo-data"
+        base = _packaged_data_root()
+        if base is None:
+            root = bobo_root()
+            base = root / "bobo-data" if root else None
+    if base is None:
+        raise RuntimeError(
+            "无法定位 BoBo 数据目录：缺少 DSH_HOME（MCP 子进程环境被清洗且无打包布局可回退）。"
+            "请确认桌面壳注入 DSH_HOME，且 agent 预设的 env 转发块已随包。"
+        )
     d = base / RESULTS_DIR_NAME
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -224,15 +256,21 @@ def qdrant_endpoint() -> tuple[str | None, str | None]:
     # 打包版（桌面壳）BOBO_ROOT 指向的运行时根下没有 dbx-runtime，find_bobo_root 返回 None；
     # 但壳注入的 DBX_DATA_DIR 指向真实 dbx.db —— bobo_root=None 时 dbx_connector 会走
     # DBX_DATA_DIR 分支，所以这里必须再兜一次，否则安装版永远读不到 Qdrant 连接。
+    global _dbx_read_error
     profiles: list[dict[str, Any]] = []
+    dbx_err = ""
     for kwargs in ([{"bobo_root": root}] if root else []) + [{}]:
         try:
             profiles = dbx.load_profiles(**kwargs)
-        except Exception:
+            dbx_err = ""
+        except Exception as e:
             profiles = []
+            dbx_err = f"{type(e).__name__}: {e}"
         if profiles:
             break
     if not profiles:
+        # 记下 DBX 读取的真实原因，避免只有笼统的「未找到连接」难定位
+        _dbx_read_error = dbx_err
         return None, key
     for p in profiles:
         if (p.get("db_type") or "").lower() != "qdrant":
@@ -250,19 +288,35 @@ def qdrant_endpoint() -> tuple[str | None, str | None]:
 
 
 _qclient: Any = None
-_qclient_error = ""   # 最近一次 Qdrant 不可用的原因（save/stats 会显式回传给模型）
+_qclient_error = ""                  # 最近一次 Qdrant 不可用的原因（save/stats 会显式回传给模型）
+_qclient_fail_at = 0.0               # 最近一次连接尝试失败的单调时钟；0 = 未失败 / 已恢复
+_dbx_read_error = ""                 # 最近一次从 DBX 读连接库失败的原因（空串 = 正常）
+_QCLIENT_RETRY_TTL = 30.0            # 连接失败后的重试窗口（秒）：网络抖动 / 鉴权暂态自动恢复
 
 
 def qdrant_client():
-    """惰性创建 Qdrant 客户端；不可用时返回 None 并记录原因（降级本地模式，不静默）。"""
-    global _qclient, _qclient_error
+    """惰性创建 Qdrant 客户端；不可用时返回 None 并记录原因（降级本地模式，不静默）。
+
+    自愈策略：
+    - 成功建连 → 缓存复用；
+    - 未找到连接（DBX 暂无 qdrant 连接 / 未设 env）→ 不缓存，每次调用都重新解析，
+      用户随后建好 DBX 连接即可自愈、无需重启（SQLite 读取开销可忽略）；
+    - 连接尝试失败（不可达 / 鉴权）→ 在 _QCLIENT_RETRY_TTL 重试窗口后自动重试，
+      避免网络抖动把进程打成永久不可达。
+    """
+    global _qclient, _qclient_error, _qclient_fail_at, _dbx_read_error
     if _qclient is not None:
-        return _qclient or None
+        return _qclient
+    # 连接失败但仍在重试窗口内：直接返回失败，避免每次工具调用都阻塞探活
+    if _qclient_fail_at and time.monotonic() - _qclient_fail_at < _QCLIENT_RETRY_TTL:
+        return None
     url, key = qdrant_endpoint()
     if not url:
-        _qclient = False
+        # 配置缺失 / DBX 读不到：不设失败时间戳 → 每次工具调用都重新解析，后配连接即自愈
         _qclient_error = ("未找到 Qdrant 连接：DBX 里没有 db_type=qdrant 的连接，"
                           "且未设置 REVERSE_MEMORY_QDRANT_URL")
+        if _dbx_read_error:
+            _qclient_error += f"。DBX 连接库读取异常：{_dbx_read_error}"
         return None
     try:
         from qdrant_client import QdrantClient
@@ -271,10 +325,11 @@ def qdrant_client():
         c.get_collections()  # 连通性探活
         _qclient = c
         _qclient_error = ""
+        _qclient_fail_at = 0.0
         return c
     except Exception as e:
         print(f"[memory_store] Qdrant 不可达（降级本地模式）: {e}")
-        _qclient = False
+        _qclient_fail_at = time.monotonic()
         _qclient_error = f"Qdrant 不可达 {url}: {e}"
         return None
 
@@ -926,6 +981,17 @@ def sync_local_to_qdrant() -> dict[str, Any]:
     return {"synced": synced, "removed_upstream": removed, "qdrant_reachable": True}
 
 
+def _resolved_dbx_db() -> str:
+    """解析当前 DBX 连接库的实际路径（供 stats 现场诊断；解析不到返回空串）。"""
+    dbx = _load_dbx_connector()
+    if not dbx:
+        return ""
+    try:
+        return str(dbx.dbx_db_path(dbx.find_bobo_root()))
+    except Exception:
+        return ""
+
+
 def stats() -> dict[str, Any]:
     reg = _load_registry()
     client = qdrant_client()
@@ -954,6 +1020,8 @@ def stats() -> dict[str, Any]:
         "threshold": CONFIDENCE_THRESHOLD,
         "threshold_rule": f"confidence > {CONFIDENCE_THRESHOLD}",
         "qdrant_error": qdrant_error(),
+        "data_dir": str(data_dir()),
+        "dbx_db": _resolved_dbx_db(),
         "local_active_count": store_count,
         "local_archived_count": len(reg) - store_count,
         "qdrant_point_count": qdrant_count,

@@ -158,6 +158,42 @@ function seedDbxDrivers() {
 }
 
 /**
+ * 打包版在启动时幂等生成环境清单 env-manifest.json（runtime 与数据根两处），
+ * 供 bobo-env 技能 / 逆向·工作流预设读取 `<BOBO_ROOT>/dbx-runtime/env-manifest.json`。
+ * 安装包布局没有 dbx-runtime 目录（改名为 runtime/dbx），且清单须含目标机本机路径
+ * （构建机预置会写入构建机绝对路径，违反 §四-1），故由本机启动时现算。best-effort，
+ * 不阻塞、不影响启动；开发板走 启动.sh/.cmd 生成，此处仅在打包版执行。
+ */
+function ensureEnvManifest() {
+  if (isDev) return
+  const python = path.join(projectRoot, '.venv', 'Scripts', 'python.exe')
+  const script = path.join(projectRoot, 'scripts', 'gen_env_manifest.py')
+  if (!fs.existsSync(python) || !fs.existsSync(script)) {
+    console.warn('[envManifest] 找不到 python 或 gen_env_manifest.py，跳过清单生成')
+    return
+  }
+  const env = { ...process.env, BOBO_ROOT: projectRoot, LOCALAPPDATA: projectRoot }
+  const targets = [
+    path.join(projectRoot, 'dbx-runtime', 'env-manifest.json'),
+    path.join(dataRoot, 'dbx-runtime', 'env-manifest.json'),
+  ]
+  for (const out of targets) {
+    const child = spawn(
+      python,
+      [script, '--root', projectRoot, '--out', out],
+      { cwd: projectRoot, env, stdio: ['ignore', 'ignore', 'pipe'] },
+    )
+    child.on('error', (err) => console.warn(`[envManifest] 生成失败 ${out}: ${err.message}`))
+    let errText = ''
+    if (child.stderr) child.stderr.on('data', (d) => { errText += d })
+    child.on('close', (code) => {
+      if (code !== 0) console.warn(`[envManifest] 生成退出码 ${code}: ${out} → ${errText.trim()}`)
+      else console.log(`[envManifest] 已生成 ${out}`)
+    })
+  }
+}
+
+/**
  * 首次运行策略：安装包不带 node_modules 以瘦身，改用内置 Node+pnpm 就地重建。
  * pnpm 在没有符号链接权限的机器上会退回使用目录 junction（无需任何权限）。
  * 关键健壮性：
@@ -351,6 +387,7 @@ app.whenReady().then(async () => {
   setEnv()
   fixVenvPython()
   seedSkills()
+  ensureEnvManifest()
   // 老版本遗留的用户数据可能在启动期被新版解析器拒绝（如 .credentials.yaml 里的
   // 非字符串 version 行会让整个插件树加载失败、表现为空白窗口），启动前先修复。
   repairCredentialsFile({ dshHome: process.env.DSH_HOME, log: (line) => console.log(line) })

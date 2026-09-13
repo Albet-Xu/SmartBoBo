@@ -40,18 +40,21 @@ _SCHEMA_VERSION = 1
 # ── BoBo 根目录定位（与 dbx_connector.find_bobo_root 等价，避免跨技能强依赖）──
 
 def find_bobo_root(start: str | None = None) -> Path | None:
-    """定位含 `dbx-runtime` 目录的 BoBo 根目录。
+    """定位 BoBo 根目录。
 
+    根标记目录优先 `dbx-runtime`（开发板仓库根），其次 `dbx`（安装包的
+    resources/runtime 下同目录，dbx-runtime 在打包布局里改名成了 dbx）。
     查找顺序：环境变量 BOBO_ROOT > 从 start/当前目录向上找。找不到返回 None。
     """
+    markers = ("dbx-runtime", "dbx")
     env_root = os.environ.get("BOBO_ROOT")
     if env_root:
         p = Path(env_root).resolve()
-        if (p / "dbx-runtime").is_dir():
+        if any((p / m).is_dir() for m in markers):
             return p
     cur = Path(start).resolve() if start else Path.cwd().resolve()
     for cand in (cur, *cur.parents):
-        if (cand / "dbx-runtime").is_dir():
+        if any((cand / m).is_dir() for m in markers):
             return cand
     return None
 

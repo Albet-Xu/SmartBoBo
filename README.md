@@ -102,6 +102,7 @@ Qdrant 不是内置 Agent 驱动，走 **JDBC 插件**。两种配法任选其�
   - `REVERSE_MEMORY_QDRANT_URL=http://<公司服务器>:6333`
   - `REVERSE_MEMORY_QDRANT_API_KEY=xxx`
   - 集合名固定 `reverse_experience`，首次写入自动建集合。
+  - > 逆向/工作流预设已自动把后端进程里的这些变量转发给 MCP 子进程，打包版同样生效；若启动后发现 DBX 里还没建 Qdrant 连接，补建后**无需重启**，下次工具调用会自动重试自愈。
 
 ### 5.4 （可选）代理池
 

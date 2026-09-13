@@ -31,6 +31,7 @@ import asyncio
 import csv as _csv
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -195,17 +196,33 @@ def _resolve_camoufox_executable() -> str:
     )
 
 
+def _ff_version_from_executable(exe: str) -> str:
+    """从已就绪的 camoufox 可执行文件推导 Firefox 主版本号（内核目录名的首个整数段）。
+
+    传给 AsyncCamoufox(ff_version=...)，让 camoufox 的 launch_options 走 `if ff_version`
+    分支、跳过 installed_verstr()——后者走 %LOCALAPPDATA% 用户缓存（platformdirs 在 Windows
+    上不响应 LOCALAPPDATA 覆盖），全新机器缓存为空会误报 "official/stable is not installed"。
+    值只作主版本（与 installed_verstr().split('.',1)[0] 一致），行为无变化。
+    """
+    m = re.match(r"^(\d+)", Path(exe).parent.name)
+    return m.group(1) if m else "152"
+
+
 async def _launch_context(proxy_cfg: dict | None, profile_dir: str):
     """真正的上下文初始化（不重试）。"""
     Path(profile_dir).mkdir(parents=True, exist_ok=True)
-    # 固定可执行路径：让 launch_options 走已就绪的二进制，跳过内部"缺失即下载"分支。
+    # 固定可执行路径并显式喂主版本：让 launch_options 跳过 installed_verstr()/launch_path()
+    # （二者依赖 %LOCALAPPDATA% 用户缓存，全新机上为空会误报未安装而静默下载失败），
+    # 从而只认随包运行时里的自带内核。
+    exe = _resolve_camoufox_executable()
     camo = AsyncCamoufox(
         headless=True,
         persistent_context=True,
         user_data_dir=profile_dir,
         exclude_addons=[DefaultAddons.UBO],
         proxy=proxy_cfg,
-        executable_path=_resolve_camoufox_executable(),
+        executable_path=exe,
+        ff_version=_ff_version_from_executable(exe),
     )
     ctx = await camo.__aenter__()
     return camo, ctx
