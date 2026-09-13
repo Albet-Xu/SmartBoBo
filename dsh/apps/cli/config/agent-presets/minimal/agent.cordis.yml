@@ -11,6 +11,9 @@
 - id: xujianbo-persona
   name: '../../plugins/xujianbo-persona.mjs'
 
+- id: at-workspace
+  name: '../../plugins/at-workspace.mjs'
+
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:

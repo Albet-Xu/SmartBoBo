@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { appendFile, cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
@@ -3156,6 +3156,40 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       async openPath(request, signal) {
         return openPath(request, request.payload.path, signal)
+      },
+    },
+
+    atFile: {
+      /** List one directory level (files + subdirectories) for the `@` reference UX. */
+      async list(request) {
+        const target = request.payload.path ?? defaults.cwd
+        try {
+          const dirents = await readdir(target, { withFileTypes: true })
+          const SKIP = new Set(['.git', 'node_modules', 'dist', 'build', 'out', 'coverage', '__pycache__', '.venv', '.idea', '.vscode', '.dsh'])
+          const MAX = 1000
+          const entries = []
+          for (const ent of dirents) {
+            if (ent.name.startsWith('.')) continue
+            const full = join(target, ent.name)
+            const isDir = ent.isDirectory()
+            if (isDir && SKIP.has(ent.name)) continue
+            if (ent.isSymbolicLink()) continue
+            entries.push({ path: full, rel: relative(target, full).split(sep).join('/'), name: ent.name, isDir })
+          }
+          entries.sort((a, b) => (a.isDir === b.isDir ? (a.name < b.name ? -1 : 1) : a.isDir ? -1 : 1))
+          const truncated = entries.length > MAX
+          return ok(request, {
+            path: target,
+            entries: truncated ? entries.slice(0, MAX) : entries,
+            truncated,
+          })
+        } catch (error: unknown) {
+          return err(request, {
+            code: 'directory-unreadable',
+            message: `atFile.list cannot read "${target}": ${error instanceof Error ? error.message : String(error)}`,
+            details: { path: target },
+          })
+        }
       },
     },
 

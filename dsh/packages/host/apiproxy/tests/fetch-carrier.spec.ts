@@ -331,6 +331,11 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
         return new Response('stub', { status: 404 })
       },
     },
+    atFile: {
+      async list(request) {
+        return { rpcId: request.rpcId, result: { ok: true, value: { path: '.', entries: [], truncated: false } } }
+      },
+    },
   }
 }
 

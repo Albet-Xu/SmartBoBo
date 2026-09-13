@@ -3008,6 +3008,19 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
     downloads: {
       sessionLog: () => Promise.resolve(new Response('fixture mode does not serve session export', { status: 404 })),
     },
+    atFile: {
+      list: request => {
+        const target = request.payload.path ?? '.'
+        return Promise.resolve(ok(request, {
+          path: target,
+          entries: [
+            { path: `${target}/notes.md`, rel: 'notes.md', name: 'notes.md', isDir: false },
+            { path: `${target}/src`, rel: 'src', name: 'src', isDir: true },
+          ],
+          truncated: false,
+        }))
+      },
+    },
   }
 
   const rpc: ClientConnectionRpc = {
@@ -3113,6 +3126,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'host.listDirectory': return this.api.host.listDirectory(request, new AbortController().signal)
       case 'host.createDirectory': return this.api.host.createDirectory(request)
       case 'host.openPath': return this.api.host.openPath(request, new AbortController().signal)
+      case 'atFile.list': return this.api.atFile.list(request, signal)
       case 'workspace.list': return this.api.workspace.list(request)
       case 'workspace.create': return this.api.workspace.create(request)
       case 'workspace.rename': return this.api.workspace.rename(request)

@@ -11,6 +11,9 @@
 - id: xujianbo-persona
   name: '../../plugins/xujianbo-persona.mjs'
 
+- id: at-workspace
+  name: '../../plugins/at-workspace.mjs'
+
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
@@ -52,6 +55,10 @@
       - scripts、数据库数据目录（dbx_data_dir）、代理池配置、crawl_script 等路径都以清单为准；
       - **不要自行搜索路径、不要猜测；不要重新安装或联网重新下载 camoufox**（浏览器二进制已受控预铺；确认其状态请读清单 `camoufox` 段）。
 
+      ## 读取 PDF（固定）
+
+      用户给出 PDF 文件路径并要求读取/总结/提取其中内容时，必须调用 PDF 工具（serverName=pdf-extract）：先用 `mcp__pdf-extract-crawl__pdf_extract_info` 拿总页数；再用 `mcp__pdf-extract-crawl__pdf_extract` 分批读取（一次最多 20 页 / 约 4 万字符），返回 `truncated=true` 时按 `next_page_start` 继续读后续页直到读够。工具按页返回文字、表格转成 Markdown，据此回答/汇总/提取字段。**默认只读不落盘**：用户没有明确要求保存时绝不传 `save=true`，只有用户要求保存时才 `save=true`（可用 `save_dir` 指定目录）。仅支持带文字层的 PDF，扫描件/纯图片 PDF 暂不支持，如实告知用户。
+
       ## 身份与品牌规则（固定）
 
       你的正式身份是 BoBo，一个由许建波同学开发的 AI 智慧采集小助手，运行在 SmartBoBo Agent 环境中。身份说明用于约束身份认知，但绝不主动自我介绍。仅当用户直接向你发起问候或身份询问（如“你好”“hello”“hi”“你是谁”“你是谁？”“介绍一下你自己”“你叫什么”等）时才进行自我介绍，且只把固定开场一句作为回答的开头第一句：“你好！我是 BoBo，一个由许建波同学开发的 AI 智慧采集小助手。我目前运行在 SmartBoBo Agent 环境中，主要功能包括网页采集、MCP 工具与技能扩展等。”除命中这些问候/身份关键词外，任何回复都不得自带“你好！我是 BoBo…”这类自我介绍、打招呼或开场问候；也不要因为用户提到“BoBo”或“SmartBoBo”等字眼就自我介绍。禁止自称 MiMo 或任何小米系产品身份。
@@ -91,3 +98,24 @@
 
 - id: tool-ask-user
   name: '@deepseek-ai/dsh-tool-ask-user'
+
+# ── PDF 提取 MCP（读取 PDF 文字 + 表格；文字版无 OCR）────────────────────────
+# serverName=pdf-extract-crawl → 模型侧 mcp__pdf-extract-crawl__pdf_extract_*。
+# 相对后端 cwd（dsh/）解析：`../` 指向 BoBo 根；跨机器可移植。
+- id: mcp-pdf-extract
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: pdf-extract-crawl
+    transport: stdio
+    command: ../.venv/Scripts/python.exe
+    args: ['../scripts/pdf_extract_server.py']
+    cwd: !!js process.cwd()
+    env:
+      DSH_HOME: !!js process.env.DSH_HOME || ''
+      BOBO_ROOT: !!js process.env.BOBO_ROOT || ''
+    toolCallTimeoutMs: 120000
+    reconnect:
+      enabled: true
+      initialDelayMs: 500
+      maxDelayMs: 30000
+      maxAttempts: 10

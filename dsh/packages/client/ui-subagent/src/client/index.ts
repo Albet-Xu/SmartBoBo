@@ -40,6 +40,43 @@ export type {
 /** Required services for references, conversation slots, and session navigation. */
 export const inject = ['inputTriggers', 'sessions', 'slots', 'locale']
 
+/** One workspace entry returned by the host atFile.list RPC. */
+interface AtFileEntryWire {
+  path: string
+  rel: string
+  name: string
+  isDir: boolean
+}
+
+/**
+ * Call the host atFile.list unary RPC directly (same-origin POST with the
+ * client-request envelope). Kept independent of the generated connection
+ * client so no RPC-surface regeneration is needed.
+ * @param path - optional directory; absent lists the host cwd.
+ * @returns listed entries (files + directories), bounded.
+ */
+async function listAtFiles(path?: string): Promise<AtFileEntryWire[]> {
+  try {
+    const origin = globalThis.location?.origin ?? ''
+    const rpcId = crypto.randomUUID()
+    const res = await fetch(new URL('/api/atFile.list', origin), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request' as const,
+        rpcId,
+        method: 'atFile.list' as const,
+        payload: path === undefined ? {} : { path },
+      }),
+    })
+    if (!res.ok) return []
+    const full = (await res.json()) as { result?: { ok?: boolean; value?: { entries?: AtFileEntryWire[] } } }
+    return full?.result?.ok === true ? (full.result.value?.entries ?? []) : []
+  } catch {
+    return []
+  }
+}
+
 /** Claim the composer for one-shot history or an unavailable continuation owner. */
 function selectReadOnlySubagent(owner: ComposerChainProps): SubagentReadOnlyMatch | null {
   const subagent = owner.session?.subagent
@@ -95,6 +132,35 @@ export function apply(ctx: ClientContext): void {
   }
   const inputTriggers = ctx.get('inputTriggers') as InputTriggerServiceContract
   ctx.effect(() => inputTriggers.registerSource(source), 'ui-subagent: @ source')
+
+  // Second '@' source: workspace files/directories, fed by the host atFile.list
+  // RPC. Selectable alongside subagent references; the picked `@<rel>` token is
+  // expanded into content / a listing by the host at-workspace plugin.
+  const atFileSource: InputTriggerSource = {
+    trigger: '@',
+    name: 'workspace-files',
+    order: 5,
+    async candidates(_session, { query }) {
+      const q = (query ?? '').trim().toLowerCase()
+      const entries = await listAtFiles()
+      return entries
+        .filter(e => q === '' || e.rel.toLowerCase().includes(q))
+        .slice(0, 60)
+        .map(e => ({
+          name: e.rel,
+          description: e.isDir ? '目录' : '文件',
+          hint: e.isDir ? '›' : '📄',
+        }))
+    },
+    onPick({ candidate }) {
+      return { text: `@${candidate.name} ` }
+    },
+    codec: {
+      clipboardText: ref => `@${ref}`,
+      serialize: ref => Promise.resolve(`@${ref}`),
+    },
+  }
+  ctx.effect(() => inputTriggers.registerSource(atFileSource), 'ui-subagent: @ workspace-files source')
 
   const catalogActions = (_parentSessionId: SessionId): SubagentCatalogInjected => ({
     openChild(address: SubagentAddress) {
