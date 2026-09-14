@@ -69,10 +69,6 @@ export function collectTokens(text) {
   return [...new Set(tokens.filter(Boolean))]
 }
 
-function rootOf(cfg) {
-  return cfg.workspaceRoot ? cfg.workspaceRoot : process.cwd()
-}
-
 function resolveIn(root, token) {
   // token 以 @ 之后的内容为准；拒绝绝对路径逃逸与 '..' 越界
   if (token.includes('..')) return undefined
@@ -203,7 +199,6 @@ export function expandReferences(root, text, log = {}) {
  */
 export function apply(ctx, config) {
   const cfg = { ...DEFAULT_CONFIG, ...(config || {}) }
-  const root = rootOf(cfg)
   const log = {
     info: (message) => {
       try {
@@ -225,6 +220,12 @@ export function apply(ctx, config) {
     if (decision.kind === 'reject' || payload.signal?.aborted === true) return decision
     const sessionId = String(payload.agent?.id ?? payload.agent?.session?.id ?? '')
     if (!claim(`${sessionId}:${payload.turn}:${payload.step}`)) return decision
+    // Resolve `@引用` against THIS session's cwd (the workspace the user
+    // opened), not process.cwd() (the host install dir). An explicit
+    // workspaceRoot config pins a fixed root; without either, skip injection.
+    const sessionCwd = payload.agent?.session?.requestHeader?.()?.cwd
+    const root = sessionCwd ?? cfg.workspaceRoot
+    if (!root) return decision
     const injected = []
     const messages = payload.messages ?? []
     for (const message of messages) {

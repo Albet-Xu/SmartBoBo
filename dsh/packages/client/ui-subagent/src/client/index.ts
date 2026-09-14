@@ -133,16 +133,25 @@ export function apply(ctx: ClientContext): void {
   const inputTriggers = ctx.get('inputTriggers') as InputTriggerServiceContract
   ctx.effect(() => inputTriggers.registerSource(source), 'ui-subagent: @ source')
 
-  // Second '@' source: workspace files/directories, fed by the host atFile.list
-  // RPC. Selectable alongside subagent references; the picked `@<rel>` token is
-  // expanded into content / a listing by the host at-workspace plugin.
+  // The workspace-files `@` source lists the *current session's cwd* — the
+  // workspace the user opened — never the host default directory. With no
+  // active session/workspace in scope it shows a hint row instead of the host
+  // dir (whose contents would be unrelated to what the user is working on).
+  const NO_ROOT_HINT = 'workspace.no-root'
+  const workspaceRootOf = (session: ClientSessionContext): string | undefined =>
+    sessions.list.getSnapshot().byId[session.sessionId]?.cwd
+
   const atFileSource: InputTriggerSource = {
     trigger: '@',
     name: 'workspace-files',
     order: 5,
-    async candidates(_session, { query }) {
+    async candidates(session, { query }) {
+      const root = workspaceRootOf(session)
+      if (root === undefined) {
+        return [{ name: '当前没有可用工作区，请先打开/进入一个工作区', hint: NO_ROOT_HINT }]
+      }
       const q = (query ?? '').trim().toLowerCase()
-      const entries = await listAtFiles()
+      const entries = await listAtFiles(root)
       return entries
         .filter(e => q === '' || e.rel.toLowerCase().includes(q))
         .slice(0, 60)
@@ -153,6 +162,7 @@ export function apply(ctx: ClientContext): void {
         }))
     },
     onPick({ candidate }) {
+      if (candidate.hint === NO_ROOT_HINT) return 'handled'
       return { text: `@${candidate.name} ` }
     },
     codec: {

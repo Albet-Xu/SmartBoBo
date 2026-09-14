@@ -13,7 +13,7 @@
  */
 import { Context } from '@deepseek-ai/cordis'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   SlotRegistry, type ConversationSnapshot, type SessionId, type SessionListState,
   type SessionSummary, type SubagentAddress,
@@ -80,12 +80,14 @@ async function provideSlotFaces(ctx: Context): Promise<void> {
   } as never, () => null)
 }
 
-/** Boot the plugin over fake slash/sessions faces; returns the captured source and the list face. */
+/** Boot the plugin over fake slash/sessions faces; returns both '@' sources and the list face. */
 async function fullBench(sessions: SessionSummary[]) {
   const ctx = new Context()
-  let captured: InputTriggerSource | undefined
+  const sources = new Map<string, InputTriggerSource>()
   const face = sessionsWith(sessions)
-  ctx.provide('inputTriggers', { registerSource: (src: InputTriggerSource) => { captured = src; return () => {} } })
+  ctx.provide('inputTriggers', {
+    registerSource: (src: InputTriggerSource) => { sources.set(src.name, src); return () => {} },
+  })
   ctx.provide('sessions', face)
   ctx.provide('connection', { api: { settings: {} }, isLoopback: false } as never)
   // ui-theme's Appearance row binds a durable scope through these two.
@@ -94,12 +96,17 @@ async function fullBench(sessions: SessionSummary[]) {
   await provideSlotFaces(ctx)
   await ctx.plugin({ inject: localeInject, apply: applyLocale }).await()
   await ctx.plugin({ inject: [...inject], apply }).await()
-  return { source: captured!, face, ctx }
+  return { subagent: sources.get('subagent')!, file: sources.get('workspace-files')!, face, ctx }
 }
 
-/** Source-only bench for the behavior-contract suites. */
+/** Source-only bench over the subagent '@' source (the reference suite's subject). */
 async function bench(sessions: SessionSummary[]): Promise<InputTriggerSource> {
-  return (await fullBench(sessions)).source
+  return (await fullBench(sessions)).subagent
+}
+
+/** Source-only bench over the workspace-files '@' source. */
+async function benchFile(sessions: SessionSummary[]): Promise<InputTriggerSource> {
+  return (await fullBench(sessions)).file
 }
 
 const FAMILY: SessionSummary[] = [
@@ -224,7 +231,7 @@ describe('lexicon', () => {
   })
 
   it('subscribeLexicon forwards the session-list change feed and unsubscribes cleanly', async () => {
-    const { source, face } = await fullBench(FAMILY)
+    const { subagent: source, face } = await fullBench(FAMILY)
     let notified = 0
     const off = source.subscribeLexicon!(proj('parent'), () => { notified += 1 })
     expect(face.listenerCount()).toBe(1)
@@ -263,5 +270,51 @@ describe('adjudication', () => {
     const source = await bench(FAMILY)
     expect('matchSpace' in source && source.matchSpace !== undefined).toBe(false)
     expect('matchEnter' in source && source.matchEnter !== undefined).toBe(false)
+  })
+})
+
+describe('workspace-files source', () => {
+  const WORKSPACE_SES: SessionSummary[] = [
+    summary({ id: sid('ws'), cwd: '/workspace/w', running: true }),
+  ]
+
+  it('shows a hint row, never the host dir, when the session has no cwd', async () => {
+    const file = await benchFile(FAMILY)
+    const out = await file.candidates(proj('childless'), req(''))
+    expect(out).toHaveLength(1)
+    expect(out[0].hint).toBe('workspace.no-root')
+  })
+
+  it('picks the hint row as a no-op instead of inserting @text', async () => {
+    const file = await benchFile(FAMILY)
+    const outcome = file.onPick({
+      candidate: { name: '当前没有可用工作区，请先打开/进入一个工作区', hint: 'workspace.no-root' },
+      session: proj('childless'),
+      position: 'inline',
+      via: 'menu',
+      span: { start: 0, end: 4, draftRev: 1 },
+    })
+    expect(outcome).toBe('handled')
+  })
+
+  it('lists the current session cwd as the @ root', async () => {
+    let requestedPath: string | undefined
+    vi.stubGlobal('location', { origin: 'http://localhost:3000' })
+    vi.stubGlobal('fetch', vi.fn(async (_input: unknown, init: unknown) => {
+      const body = String((init as { body?: unknown })?.body ?? '')
+      requestedPath = (JSON.parse(body) as { payload: { path?: string } }).payload.path
+      return {
+        ok: true,
+        json: async () => ({ result: { ok: true, value: { entries: [{ path: '/workspace/w/data.md', rel: 'data.md', name: 'data.md', isDir: false }] } } }),
+      }
+    }))
+    try {
+      const file = await benchFile(WORKSPACE_SES)
+      const out = await file.candidates(proj('ws'), req(''))
+      expect(requestedPath).toBe('/workspace/w')
+      expect(out.map(c => c.name)).toEqual(['data.md'])
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
