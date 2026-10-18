@@ -1,0 +1,69 @@
+{
+  "name": "dsh-tauri-ui-playground",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "仅供开发使用的 DSH Tauri 桌面壳 UI 组件演练面板。",
+  "author": "Hairyf <wwu710632@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dsh-tauri-desk/dsh-tauri-plugins.git"
+  },
+  "bugs": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins/issues",
+  "keywords": [
+    "dsh",
+    "plugin",
+    "dsh-plugin",
+    "ui",
+    "playground",
+    "tauri",
+    "deepseek-harness"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": "./dist/client.cjs",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "cordis.patch.yml",
+    "dist"
+  ],
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "dsh-tauri",
+        "dsh-tauri-ui"
+      ],
+      "external": [
+        "dsh-tauri/client",
+        "dsh-tauri-ui/client"
+      ],
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepublishOnly": "nr build",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-layout": "catalog:dsh",
+    "dsh-tauri": "workspace:*",
+    "dsh-tauri-tsdown": "workspace:*",
+    "dsh-tauri-ui": "workspace:*",
+    "react": "catalog:runtime",
+    "tsdown": "catalog:cli"
+  }
+}

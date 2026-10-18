@@ -1,0 +1,41 @@
+import { defineLocale } from 'dsh-tauri/client'
+import { PLUGIN_ID } from '../../shared/constants'
+
+export const locale = defineLocale(PLUGIN_ID, {
+  zh: {
+    back: '返回应用',
+    search: '搜索设置…',
+    settings: '设置',
+    noResults: '没有匹配的设置项',
+    resumeTask: '继续任务',
+    recoverContentRisk: '安全恢复并继续',
+    im: 'IM',
+    chooseWorkspace: '选择工作区',
+    ungrouped: '未分组',
+    addWorkspace: '添加工作区…',
+    close: '关闭',
+    cancel: '取消',
+    loading: '正在加载工作区…',
+    folderErrorTitle: '无法打开文件夹',
+    folderErrorRetry: '重新选择',
+    apply: '保存',
+  },
+  en: {
+    back: 'Back to app',
+    search: 'Search settings…',
+    settings: 'Settings',
+    noResults: 'No matching settings',
+    resumeTask: 'Resume task',
+    recoverContentRisk: 'Recover safely and continue',
+    im: 'IM',
+    chooseWorkspace: 'Choose workspace',
+    ungrouped: 'Ungrouped',
+    addWorkspace: 'Add workspace…',
+    close: 'Close',
+    cancel: 'Cancel',
+    loading: 'Loading workspaces…',
+    folderErrorTitle: 'Couldn’t open folder',
+    folderErrorRetry: 'Choose again',
+    apply: 'Apply',
+  },
+})

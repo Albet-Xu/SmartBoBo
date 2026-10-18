@@ -1,0 +1,14 @@
+.DS_Store
+/.build
+/Packages
+/*.xcodeproj
+/*.xcresult
+xcuserdata/
+DerivedData/
+.swiftpm/config/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+.swiftpm
+Package.resolved
+coverage.json
+.push-notifications-enabled

@@ -1,0 +1,207 @@
+[package]
+name = "deepseek-harness-desktop"
+version = "0.22.4"
+description = "Desktop application for DeepSeek Harness (dsh)"
+authors = [ "deepseek-harness-desktop contributors" ]
+edition = "2021"
+
+[workspace]
+members = [ "vendor/tauri-plugin-notifications" ]
+resolver = "2"
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "main"
+crate-type = [
+  "staticlib",
+  "cdylib",
+  "rlib"
+]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+tauri-utils = "2"
+serde_json = "1"
+json-patch = "3"
+
+[dependencies]
+tauri = { version = "2", features = [
+  "tray-icon",
+  "image-png",
+  "devtools",
+  "macos-private-api"
+] }
+# E2E：应用内嵌 WebDriver server（Tauri 官方推荐的 WebdriverIO 驱动方式）。
+# 仅当进程环境带 TAURI_WEBDRIVER_PORT 时监听，正常运行不开放端口。
+tauri-plugin-wdio-webdriver = "1"
+# `deep-link` feature：二次启动携带的 `dsh://` URL 会被转发给**主实例**并派发 open-url
+# （官方成功页「打开应用」按钮的落点）。
+tauri-plugin-single-instance = { version = "2", features = [ "deep-link" ] }
+# 深链协议注册：Windows/Linux 运行期注册、macOS 走 Info.plist（见 tauri.conf.json 的
+# `plugins.deep-link.desktop.schemes`）。官方 Electron 版用 setAsDefaultProtocolClient('dsh')。
+tauri-plugin-deep-link = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-store = "2"
+tauri-plugin-notification = "2"
+# 壳层原生通知（带交互按钮 + 点击 / 动作事件）走 Choochmeque fork：官方插件在桌面端
+# `show()` 之后即丢弃 handle，拿不到点击与按钮动作，所以 fork 是必需依赖。
+# `default-features = false` 关掉它的 notify-rust 后端，改用它自带的 Windows toast /
+# macOS 通知中心实现——那才是带按钮与事件的那条通路。
+# macOS 上它会用 swift-bridge 编译自己的 Swift 后端，源码用了 Swift 6 的 typed throws
+# （`throws(FFIResult)`），因此 macOS 构建需要 Xcode 16+（CI 见 ci.yml 的 Select Xcode 16）。
+tauri-plugin-notifications = { version = "0.5.0-rc.14", default-features = false }
+tauri-plugin-autostart = "2"
+# 桌宠素材直连远端：插件版 HTTP 从 Rust 发起请求，绕开 githubusercontent 的 CORS。
+# 版本须与 package.json 的 @tauri-apps/plugin-http（catalog:tauri，^2.6.0）保持同一 minor：
+# tauri CLI 会在构建前校验 NPM 包与 Rust crate 的 major/minor 是否一致，不一致直接退出。
+# 公开桌宠素材不需要 cookie；禁用持久化，避免缓存不可写时阻断整个应用启动。
+tauri-plugin-http = { version = "2.6", default-features = false, features = [
+  "rustls-tls",
+  "http2",
+  "charset",
+  "system-proxy"
+] }
+# 前端读取系统版本（`@tauri-apps/plugin-os` 的 `type()` / `version()`）用于缩放的平台判定。
+# 版本须与 package.json 的 @tauri-apps/plugin-os（catalog:tauri，^2.3.2）保持同一 minor：
+# tauri CLI 会在构建前校验 NPM 包与 Rust crate 的 major/minor 是否一致，不一致直接退出。
+tauri-plugin-os = "2.3"
+image = { version = "0.25", default-features = false, features = [ "png" ] }
+arboard = { version = "3", features = [ "wayland-data-control" ] }
+base64 = "0.22"
+serde = { version = "1", features = [ "derive" ] }
+serde_json = "1"
+serde_yaml = "0.9"
+regex = "1"
+sha2 = "0.10"
+log = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "fmt",
+  "time"
+] }
+tracing-appender = "0.2"
+tracing-log = "0.2"
+time = { version = "0.3", features = [ "formatting" ] }
+reqwest = { version = "0.12", features = [
+  "json",
+  "stream",
+  "socks"
+] }
+rdev = "0.5.3"
+zip = "0.6"
+futures-util = "0.3"
+flate2 = "1"
+tar = "0.4"
+rayon = "1.10"
+zstd = { version = "0.13", features = [ "zstdmt" ] }
+async-trait = "0.1"
+tokio = { version = "1", features = [ "full" ] }
+semver = "1"
+dunce = "1.0.5"
+sysinfo = { version = "0.39.6", default-features = false, features = [ "system" ] }
+
+[dev-dependencies]
+auto-launch = "0.5"
+tauri = { version = "2", features = [ "test" ] }
+tempfile = "3"
+
+# 选择数据存放目录（issue #871）：Windows 走原生 IFileDialog、macOS 走 NSOpenPanel、
+# Linux 走 xdg-desktop-portal（无 portal 时 rfd 自己回退到 zenity）。
+# 上游的默认特性是 Linux 专用的（xdg-portal + wayland + async-std），因此这里显式列
+# 出特性并关掉默认值：Windows / macOS 只需要 common-controls-v6；Linux 的 ashpd 传输
+# 后端用本仓库已有的 tokio，不为一次选目录再引入 async-std 这整套运行时。
+[target.'cfg(any(windows, target_os = "macos", target_os = "linux"))'.dependencies]
+rfd = { version = "0.16", default-features = false, features = [
+  "common-controls-v6",
+  "xdg-portal",
+  "wayland",
+  "tokio",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = [
+  "NSWindow",
+  "NSView",
+  "NSButton",
+] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = [
+  "std",
+  "NSObject",
+  "NSProcessInfo",
+  "NSGeometry",
+] }
+# CGEventTap 直监听：绕开 rdev 0.5.3 在 macOS 上对 KeyPress 事件无条件调
+# TSMGetInputSourceProperty（必须 main queue）导致的 dispatch_assert_queue SIGTRAP。
+# 见 issue #397。core-graphics / core-foundation 在 rdev 传递依赖里已有，
+# 不引入新的下载源。
+# core-foundation 与 core-graphics 0.25 对齐到 0.10：监听线程要自己持有 CGEventTap
+# 并在系统禁用事件 tap 后重新启用（issue #559），这需要在同一版 core-foundation 上
+# 建 run loop source 并 add_source，混用 0.9 / 0.10 会类型不匹配。
+core-graphics = "0.25"
+core-foundation = "0.10"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Linux 托盘直接使用上游 tray-icon 0.25 的 KSNI 后端（实现见 src/desktop/linux_tray.rs，
+# 背景见 issue #386 / #438）：
+# - tauri 2.11.5 仍固定 `tray-icon = "^0.24"`，而 0.24 在 Linux 上只有 libappindicator/GTK
+#   后端，该后端不上报任何托盘事件，单击/双击都无法唤起主窗口；
+# - tray-icon 0.25.0 新增的 KSNI 后端会把 SNI 的 Activate 转成
+#   `TrayIconEvent::Click { button: Left }`；
+# - 但 tauri 2.x 的菜单类型来自 muda 0.19，与 tray-icon 0.25 的 muda 0.20 不是同一套类型
+#   （`TrayIconBuilder::menu` 的 `ContextMenu` trait 不同），既无法 `cargo update` 也无法
+#   `[patch.crates-io]` 把 tauri 的 tray-icon 顶到 0.25，tauri 3 目前只有 alpha。
+# 因此 Linux 上绕过 `tauri::tray` 自建托盘；tauri 2.x 跟进 bump 后可删除本依赖与
+# src/desktop/linux_tray.rs。`ksni` 特性同时避免再引入 GTK/libappindicator 后端。
+[target.'cfg(target_os = "linux")'.dependencies]
+tray-icon = { version = "0.25", default-features = false, features = [ "ksni" ] }
+
+# E2E 基础设施：上游 `tauri-plugin-wdio-webdriver` 的帧上下文靠 JS 模拟
+# （`frame.contentWindow.eval`）。壳层是 `tauri://localhost`，内嵌 dsh 是
+# `http://127.0.0.1:<port>`，跨域下 `contentDocument` 为 null、proxy 无 `eval`，
+# 一切帧内脚本必然超时。本地副本改为 WebView2 原生 `ICoreWebView2Frame2::ExecuteScript`
+# （引擎按帧路由，不受同源策略约束）。改动仅限 Windows 路径，其余与上游 1.4.0 一致；
+# 上游支持后删除 vendor 与本节，详见 vendor 目录内 PATCH.md
+# （上游 issue: https://github.com/webdriverio/desktop-mobile/issues/665）。
+[patch.crates-io]
+tauri-plugin-wdio-webdriver = { path = "vendor/tauri-plugin-wdio-webdriver" }
+# 上游 0.5.0-rc.14 的 Windows 后端有三处缺口：不发 `<input>`、动作 `arguments` 只写裸
+# action id（冷启动 COM 回调看不到 launch=，会话身份丢失）、且只有 MSIX 打包应用才注册
+# COM 激活器。本地副本补齐输入框、把 arguments 改写成携带 extra 的 JSON、并为未打包的
+# DSH 写入 AUMID + CLSID 注册表项并在独立 STA 线程上跑消息泵。详见 vendor 目录内
+# PATCH.md（上游 issue: https://github.com/Choochmeque/tauri-plugin-notifications/issues）。
+tauri-plugin-notifications = { path = "vendor/tauri-plugin-notifications" }
+
+# 行号表而非完整调试信息：panic 与回溯仍能定位到行，target 体积与链接耗时都随之下降
+[profile.dev]
+debug = 1
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"
+winreg = "0.55"
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Globalization",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Environment",
+  "Win32_System_IO",
+  "Win32_System_Ioctl",
+  "Win32_System_Pipes",
+  "Win32_System_Registry",
+  "Win32_System_SystemServices",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_System_Time",
+  # GetAsyncKeyState / VK_LBUTTON：原生拖拽期间上报左键松开（desktop/pet_mouse.rs）
+  "Win32_UI_Input_KeyboardAndMouse",
+  # ExtractIconExW：任务栏大图标从 exe 内嵌图标资源提取（desktop/builder.rs，issue #744）
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }

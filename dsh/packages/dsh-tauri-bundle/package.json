@@ -1,0 +1,20 @@
+{
+  "name": "dsh-tauri-bundle",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "dsh-tauri": "workspace:*",
+    "dsh-tauri-archive": "workspace:*",
+    "dsh-tauri-brand": "workspace:*",
+    "dsh-tauri-extension": "workspace:*",
+    "dsh-tauri-mobile-ui": "workspace:*",
+    "dsh-tauri-model": "workspace:*",
+    "dsh-tauri-notification": "workspace:*",
+    "dsh-tauri-pet": "workspace:*",
+    "dsh-tauri-rightclick": "workspace:*",
+    "dsh-tauri-scheduler": "workspace:*",
+    "dsh-tauri-ssh": "workspace:*",
+    "dsh-tauri-ui": "workspace:*",
+    "dsh-tauri-worktree": "workspace:*"
+  }
+}

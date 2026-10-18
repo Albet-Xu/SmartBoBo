@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS 代码签名 entitlements（issue #214）。
+
+  bundle.macOS.hardenedRuntime 为 true 时，Hardened Runtime 的资源访问
+  默认全部关闭：没有 com.apple.security.device.audio-input，
+  已签名的 .app 即使 Info.plist 写了用途说明也拿不到麦克风。
+
+  只声明这两项资源访问：不使用 App Sandbox，因此不需要
+  com.apple.security.app-sandbox；JIT/可变内存类 entitlement 也不需要
+  （WebKit 自身的 WebContent 进程是系统进程，由系统签名携带）。
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <key>com.apple.security.device.camera</key>
+  <true/>
+</dict>
+</plist>

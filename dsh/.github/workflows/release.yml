@@ -1,0 +1,240 @@
+name: Build & Release
+
+on:
+  # 正式发布：推送 v* tag，或合并 release/* PR。
+  push:
+    tags:
+      - 'v*'
+  # branches 只能过滤目标分支；版本文件过滤减少无关 PR 产生的空 workflow run，
+  # prepare job 再校验源分支、仓库与 merged 状态。
+  pull_request:
+    types: [closed]
+    paths:
+      - package.json
+      - src-tauri/Cargo.toml
+      - src-tauri/Cargo.lock
+      - src-tauri/tauri.conf.json
+  # 手动触发：创建预发布测试构建。
+  workflow_dispatch:
+    inputs:
+      platform_filter:
+        description: 选择需要打包的平台
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - macos-aarch64
+          - macos-x86_64
+          - windows
+          - linux
+
+permissions:
+  contents: write
+
+# 同一 tag/PR 的重复运行整体排队，平台内部再通过 needs 链串行写 Release。
+concurrency:
+  group: release-workflow-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare Release
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       startsWith(github.event.pull_request.head.ref, 'release/'))
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      should_release: ${{ steps.meta.outputs.should_release }}
+      source_ref: ${{ steps.meta.outputs.source_ref }}
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Read release metadata
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_TAG: ${{ github.ref_name }}
+        run: node scripts/release-identity.mjs
+
+      - name: Create release tag
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_SHA: ${{ steps.meta.outputs.source_ref }}
+        with:
+          script: |
+            const ref = `tags/${process.env.RELEASE_TAG}`;
+            const sha = process.env.RELEASE_SHA;
+            try {
+              await github.rest.git.getRef({ ...context.repo, ref });
+              await github.rest.git.updateRef({ ...context.repo, ref, sha, force: true });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({ ...context.repo, ref: `refs/${ref}`, sha });
+            }
+
+      # 使用 lockfile 固定的 changelogithub，避免带写权限 token 时动态执行 registry 包。
+      - name: Install changelog dependencies
+        if: steps.meta.outputs.should_release == 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Sync git tag and generate changelog
+        if: steps.meta.outputs.should_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          pnpm exec changelogithub --draft --to "$RELEASE_TAG" --name "Release $RELEASE_TAG"
+
+      - name: Append Artifacts section to release
+        if: steps.meta.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh release view "$RELEASE_TAG" --json body -q .body > release_notes.md
+          cat << 'EOF' >> release_notes.md
+
+          ### 📦 Artifacts
+          - **macOS (Apple Silicon)**: 下载 `aarch64.dmg`
+          - **macOS (Intel)**: 下载 `x64.dmg`
+          - **Windows**: 下载 `.exe`
+          - **Linux (x64)**: 下载 `.AppImage` 或 `.deb`（基于 Ubuntu 22.04 构建）
+
+          > 文件名带 `_Bundle` 后缀的是**离线捆绑包**：安装包里已内置 Node.js 运行时、pnpm
+          > 与打包好的 dsh 内核，首次启动无需联网即可直接运行。不带该后缀的是常规安装包，
+          > 首次启动时按需下载运行时依赖。
+          EOF
+          gh release edit "$RELEASE_TAG" --notes-file release_notes.md
+
+  # 三个平台只构建 Actions artifacts，互不写 GitHub Release，因此可以完全并行。
+  build-macos:
+    name: Build macOS Artifacts
+    needs: prepare
+    if: >-
+      needs.prepare.result == 'success' &&
+      (github.event_name != 'workflow_dispatch' ||
+       inputs.platform_filter == 'all' ||
+       startsWith(inputs.platform_filter, 'macos-'))
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      platform_filter: ${{ github.event_name == 'workflow_dispatch' && inputs.platform_filter || 'all' }}
+      source_ref: ${{ needs.prepare.outputs.source_ref }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+  build-windows:
+    name: Build Windows Artifacts
+    needs: prepare
+    if: >-
+      needs.prepare.result == 'success' &&
+      (github.event_name != 'workflow_dispatch' ||
+       inputs.platform_filter == 'all' ||
+       inputs.platform_filter == 'windows')
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.source_ref }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+  build-linux:
+    name: Build Linux Artifacts
+    needs: prepare
+    if: >-
+      needs.prepare.result == 'success' &&
+      (github.event_name != 'workflow_dispatch' ||
+       inputs.platform_filter == 'all' ||
+       inputs.platform_filter == 'linux')
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.source_ref }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+  # 单一 writer 下载全部成功构建的产物，一次性上传并发布 Release。
+  finalize:
+    name: Publish GitHub Release
+    needs: [prepare, build-macos, build-windows, build-linux]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      ((github.event_name != 'workflow_dispatch' &&
+        needs.build-macos.result == 'success' &&
+        needs.build-windows.result == 'success' &&
+        needs.build-linux.result == 'success') ||
+       (github.event_name == 'workflow_dispatch' &&
+        (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped') &&
+        (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') &&
+        (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped')))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build outputs
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify downloaded assets
+        run: |
+          find release-assets -type f -print
+          [ -n "$(find release-assets -type f -print -quit)" ] || {
+            echo '::error::No release assets were downloaded'
+            exit 1
+          }
+
+      - name: Upload assets and publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # finalize 未 checkout，gh 无法从 .git 推断仓库，需显式指定。
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('test-{0}-{1}', github.ref_name, github.run_number) || needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ github.event_name == 'workflow_dispatch' || needs.prepare.outputs.prerelease == 'true' }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --draft --title "Release $RELEASE_TAG"
+          fi
+          mapfile -d '' assets < <(find release-assets -type f -print0)
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          if [ "$PRERELEASE" = "true" ]; then
+            # 预发布（semver pre-release 与 workflow_dispatch 的 test-* 构建）在放开草稿前
+            # 统一前置一段升级警告：finalize 是 Release 的单一 writer，各平台/各入口的说明
+            # 都汇聚到这里；重跑 finalize 时用特征串判重，避免警告被叠加多次。
+            gh release view "$RELEASE_TAG" --json body -q .body > release_notes.md
+            if ! grep -q '预发布版本' release_notes.md; then
+              cat << 'EOF' > release_notes_with_warning.md
+          > [!WARNING]
+          > 🚨 当前版本为预发布版本（pre-release），功能与稳定性可能不足。
+          > 🚨 该版本可能存在未知缺陷，请谨慎升级，勿直接用于生产环境。
+          > 🚨 建议升级前备份配置与数据，如遇异常请回退至上一正式版本。
+
+          EOF
+              cat release_notes.md >> release_notes_with_warning.md
+              gh release edit "$RELEASE_TAG" --notes-file release_notes_with_warning.md
+            fi
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
+          fi

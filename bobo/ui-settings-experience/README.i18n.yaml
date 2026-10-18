@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/bobo/ui-settings-experience/README.md
+/:
+  en: f0d2ec92bd836b63
+  zh: c0436eb8558f47ec
+/bobo-settings-experience-ui:
+  en: 1a2a33a463c2bfc0
+  zh: 8763d2b6f8dd183a
+/bobo-settings-experience-ui/summary:
+  en: 401c1bcd700c9627
+  zh: f65b9d9ca8df2118
+/bobo-settings-experience-ui/table-of-contents:
+  en: 122f0d41696980b1
+  zh: 91e3ffc41873c2d7
+/bobo-settings-experience-ui/use-this-package:
+  en: 1c3b61a446e43c40
+  zh: c09601cec5011332
+/bobo-settings-experience-ui/use-this-package/build:
+  en: f6586200b7897cb6
+  zh: 3950742b2784ef23
+/bobo-settings-experience-ui/use-this-package/mount:
+  en: 247d3c56da2c2ce3
+  zh: 0aabde31e3232a93
+/bobo-settings-experience-ui/understand-the-implementation:
+  en: c8001103444fb3ae
+  zh: 48110011835e2e74
+/bobo-settings-experience-ui/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/bobo-settings-experience-ui/model-experience/experience-pool-settings-page:
+  en: 1d4c6d9446d5befb
+  zh: 3253ae67b3fbf447
+/bobo-settings-experience-ui/model-experience/experience-pool-settings-page/what-the-model-sees:
+  en: 9c22a76a91a322d4
+  zh: 0fc4588eb9c38df0
+/bobo-settings-experience-ui/model-experience/experience-pool-settings-page/token-effect:
+  en: da96515c87d8bd08
+  zh: aa0b10fdeb88cae9
+/bobo-settings-experience-ui/model-experience/experience-pool-settings-page/kv-cache-effect:
+  en: 31f1ac8ee4f2cb82
+  zh: 5f0f883bc58091e4
+/bobo-settings-experience-ui/known-limitations-and-deferred-work:
+  en: 48f639617d33cbb0
+  zh: cc70e2cb13a79d6e
+/bobo-settings-experience-ui/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 8ec3e73528ddb1a6

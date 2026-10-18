@@ -1,0 +1,79 @@
+{
+  "name": "dsh-tauri",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness 桌面壳的消息桥接插件；同时承载桌面端认证适配：内嵌沙箱 WebView 属跨源环境，无法完成 SameSite=Strict 的浏览器会话 Cookie 交换。",
+  "author": "Hairyf <wwu710632@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dsh-tauri-desk/dsh-tauri-plugins.git"
+  },
+  "bugs": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins/issues",
+  "keywords": [
+    "dsh",
+    "plugin",
+    "dsh-plugin",
+    "tauri",
+    "deepseek-harness",
+    "bridge"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": {
+      "types": "./dist/client.d.cts",
+      "default": "./dist/client.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "cordis.patch.yml",
+    "dist"
+  ],
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout"
+      ],
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepublishOnly": "nr build",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "dsh-h3": "catalog:",
+    "h3": "catalog:",
+    "hookable": "catalog:utils",
+    "ofetch": "catalog:utils",
+    "unstorage": "catalog:utils"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-api-session-controller": "catalog:dsh",
+    "@deepseek-ai/dsh-api-workspace-controller": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
+    "@reause/core": "catalog:runtime",
+    "@types/lodash-es": "catalog:types",
+    "css-render": "catalog:ui",
+    "date-fns": "catalog:utils",
+    "dsh-tauri-tsdown": "workspace:*",
+    "lodash-es": "catalog:utils",
+    "tailwind-variants": "catalog:runtime",
+    "tsdown": "catalog:cli",
+    "valtio": "catalog:",
+    "valtio-define": "catalog:runtime"
+  }
+}

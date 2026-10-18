@@ -1,0 +1,54 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window and embedded Harness GUI. The remote Harness origin is restricted to loopback, while the shell validates every cross-origin postMessage before servicing bridge requests. The service port is NOT fixed: it defaults to 3080/3081 but is user-configurable and advances to the next free port when the default is occupied (service/workflow::find_available_port). The `remote-*` glob covers the SSH remote-machine popup windows (remote_open_window, loopback tunnel URLs only); `window-*` covers the File\u2192New Window shell windows.",
+  "windows": [
+    "main",
+    "pet",
+    "remote-*",
+    "window-*"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:event:allow-emit",
+    "core:app:allow-version",
+    "core:app:allow-default-window-icon",
+    "core:window:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-set-decorations",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-cursor-position",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:webview:allow-set-webview-zoom",
+    "notifications:default",
+    "opener:default",
+    "opener:allow-open-url",
+    "opener:allow-default-urls",
+    "opener:allow-reveal-item-in-dir",
+    "store:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://*.githubusercontent.com/*"
+        }
+      ]
+    }
+  ]
+}

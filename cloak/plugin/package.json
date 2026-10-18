@@ -1,0 +1,10 @@
+{
+  "name": "dsh-cloakbrowser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}

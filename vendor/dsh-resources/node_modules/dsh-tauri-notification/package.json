@@ -1,0 +1,71 @@
+{
+  "name": "dsh-tauri-notification",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness 桌面壳的原生通知：轮次完成、权限审批与提问提醒，带「批准」操作，点击可聚焦到发起会话，并提供通知设置页。",
+  "author": "Hairyf <wwu710632@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dsh-tauri-desk/dsh-tauri-plugins.git"
+  },
+  "bugs": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins/issues",
+  "keywords": [
+    "dsh",
+    "plugin",
+    "dsh-plugin",
+    "notification",
+    "tauri",
+    "deepseek-harness"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": "./dist/client.cjs",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "cordis.patch.yml",
+    "dist"
+  ],
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "dsh-tauri",
+        "dsh-tauri-ui"
+      ],
+      "external": [
+        "dsh-tauri/client",
+        "dsh-tauri-ui/client"
+      ],
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepublishOnly": "nr build",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "dsh-tauri": "workspace:*",
+    "dsh-tauri-ui": "workspace:*"
+  },
+  "devDependencies": {
+    "dsh-tauri-tsdown": "workspace:*",
+    "tsdown": "catalog:cli",
+    "vitest": "catalog:testing"
+  }
+}

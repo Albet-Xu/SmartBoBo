@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "useDefineForClassFields": true,
+    "baseUrl": ".",
+    "module": "ESNext",
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "paths": {
+      "@/*": ["src/*"],
+      "dsh-tauri": ["packages/dsh-tauri/src/index.ts"],
+      "dsh-tauri/client": ["packages/dsh-tauri/src/client/index.ts"],
+      "dsh-tauri-ui": ["packages/dsh-tauri-ui/src/index.ts"],
+      "dsh-tauri-ui/client": ["packages/dsh-tauri-ui/src/client/index.ts"]
+    },
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+
+    /* Linting */
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src",
+    "test",
+    "packages/*/src",
+    "packages/*/scripts",
+    "types",
+    "packages/.test/test-utils.ts",
+    "scripts",
+    "*.config.ts",
+    "genapi*.ts"
+  ]
+}

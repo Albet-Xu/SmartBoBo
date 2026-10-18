@@ -1,0 +1,186 @@
+@import "tailwindcss";
+
+@config "../../tailwind.config.js";
+@import "@heroui/styles"; 
+
+@import "./components/scrollbar.css";
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+}
+
+
+/* WebView2 123+ 的原生拖拽区域支持触摸屏；Windows runtime 110+ 通过
+   msWebView2EnableDraggableRegions 参数启用。按钮不在该区域内，故无需 no-drag。 */
+[data-tauri-drag-region] {
+  app-region: drag;
+  -webkit-app-region: drag;
+}
+
+@theme inline {
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.5);
+  --radius-3xl: calc(var(--radius) * 1.75);
+  --radius-4xl: calc(var(--radius) * 2);
+}
+
+@layer components {
+  .button {
+    border-radius: var(--radius-md);
+  }
+
+  .button--sm,
+  .tooltip,
+  .close-button {
+    border-radius: var(--radius-sm);
+  }
+
+  .button--lg,
+  .card,
+  .dropdown__popover,
+  .select__popover,
+  .popover,
+  .toast {
+    border-radius: var(--radius-lg);
+  }
+
+  .menu-item,
+  .list-box-item {
+    border-radius: var(--radius-md);
+    min-height: calc(var(--spacing) * 3);
+  }
+  .menu-item .label {
+    font-size: 13px;
+  }
+
+  .checkbox__control {
+    border-radius: var(--radius-xs);
+  }
+
+  .checkbox__control::before {
+    border-radius: inherit;
+  }
+}
+
+:root {
+  --radius: 16px;
+  --field-radius: 12px;
+  --backdrop: rgba(0, 0, 0, 0.5);
+  /* === 壳层自有 token === */
+  --color-canvas: #151517;             /* bg-base (bluish-950) */
+  --color-startup: #151517;            /* 启动页底色：默认与画布同色，开启透明度时由外观投影接管 */
+  --color-panel: #1b1b1c;              /* specific-sidebar-fill (bluish-900) */
+  --color-panel-2: #2c2c2e;            /* bg-layer-2 (bluish-850) */
+  --color-panel-hover: #2c2c2e;        /* sidebar-nav-item-hover (bluish-850) */
+  --color-line: rgba(255, 255, 255, 0.12);   /* border-l2 #ffffff1f */
+  --color-line-strong: rgba(255, 255, 255, 0.2); /* border-l4 #fff3 */
+  --color-ink: #f9fafb;                /* label-primary (bluish-50) */
+  --color-info: #7aaaff;               /* state-business-primary (deepseek-400) */
+  --color-info-hover: #4176e6;         /* button-info-hover (deepseek-500) */
+  --color-ok: #22c55e;                 /* state-success-primary (green-500) */
+  --color-log-bg: #1b1b1c;             /* markdown-code-block (bluish-900) */
+  --color-log-ink: #cfd3d6;            /* label-secondary (bluish-300) */
+  /* 滚动条 thumb（官方 scrollbar-bg/hover 的 neutral 值） */
+  --color-scroll-thumb: rgba(84, 85, 87, 0.45);     /* neutral-600 */
+  --color-scroll-thumb-strong: rgba(60, 60, 61, 0.6); /* neutral-700 */
+  /* 加载页 token：取值与官方 web shell boot 页（dsw alias token）逐项一致 */
+  --color-load-ink: #f9fafb;
+  --color-load-muted: #adb2b8;
+  --color-load-ring: rgba(255, 255, 255, 0.12);
+  /* 按钮 token：官方 button-primary-fill 为中性反色（深色下白底深字、
+     浅色下深底白字），hover/active 取 official interactive-bg-* */
+  --color-btn-fill: #f9fafb;           /* button-primary-fill (bluish-50) */
+  --color-btn-fill-hover: #ebeef2;     /* button-primary-hover (bluish-100) */
+  --color-btn-ink: #0f1115;            /* label-primary-foreground (bluish-1000) */
+  --color-btn-border: rgba(255, 255, 255, 0.12);  /* border-l2 */
+  --color-btn-hover: rgba(255, 255, 255, 0.08);   /* interactive-bg-hover #ffffff14 */
+  --color-btn-active: rgba(255, 255, 255, 0.14);  /* interactive-bg-active #ffffff24 */
+  --color-btn-danger-hover: rgba(242, 90, 90, 0.12); /* interactive-bg-hover-danger #f25a5a26 */
+  /* 壳层导航栏 token：ShellNavBar 按钮 hover/active 覆盖层（浅色主题同下） */
+  --color-nav-hover: rgba(255, 255, 255, 0.08);
+  --color-nav-active: rgba(255, 255, 255, 0.14);
+
+  /* === HeroUI 品牌主色 → dsw brand-primary（中性反色） === */
+  --accent: #f9fafb;                   /* brand-primary (bluish-50) */
+  --accent-foreground: #0f1115;        /* label-primary-foreground (bluish-1000) */
+}
+
+html[data-theme="light"] {
+  --backdrop: rgba(0, 0, 0, 0.24);
+  --color-canvas: #ffffff;             /* bg-base (bluish-00) */
+  --color-startup: #ffffff;            /* 启动页底色：默认与画布同色 */
+  --color-panel: #f9fafb;              /* specific-sidebar-fill (bluish-50) */
+  --color-panel-2: #f5f6f7;            /* bg-module-platform / selector (bluish-60) */
+  --color-panel-hover: #f1f3f5;        /* sidebar-nav-item-hover (bluish-75) */
+  --color-line: rgba(0, 0, 0, 0.1);    /* border-l2 #0000001a */
+  --color-line-strong: rgba(0, 0, 0, 0.16); /* border-l4 #00000029 */
+  --color-ink: #0f1115;                /* label-primary (bluish-1000) */
+  --color-info: #4176e6;               /* state-business-primary (deepseek-500) */
+  --color-info-hover: #7aaaff;         /* button-info-hover (deepseek-400) */
+  --color-ok: #22c55e;                 /* state-success-primary (green-500) */
+  --color-log-bg: #f9fafb;             /* markdown-code-block (bluish-50) */
+  --color-log-ink: #61666b;            /* label-secondary (bluish-700) */
+  --color-scroll-thumb: rgba(212, 212, 212, 0.8);   /* neutral-300 */
+  --color-scroll-thumb-strong: rgba(229, 229, 229, 0.9); /* neutral-200 */
+  /* 加载页 token：light 主题对应官方 alias 值 */
+  --color-load-ink: #0f1115;
+  --color-load-muted: #81858c;
+  --color-load-ring: rgba(0, 0, 0, 0.1);
+  /* 按钮 token：light 主题对应官方 alias 值 */
+  --color-btn-fill: #0f1115;           /* button-primary-fill (bluish-1000) */
+  --color-btn-fill-hover: #43454a;     /* button-primary-hover (bluish-750) */
+  --color-btn-ink: #ffffff;            /* label-primary-foreground (bluish-00) */
+  --color-btn-border: rgba(0, 0, 0, 0.1);        /* border-l2 */
+  --color-btn-hover: rgba(38, 49, 72, 0.06);     /* interactive-bg-hover #2631480f */
+  --color-btn-active: rgba(38, 49, 72, 0.1);     /* interactive-bg-active #2631481a */
+  --color-btn-danger-hover: rgba(236, 19, 19, 0.05); /* interactive-bg-hover-danger #ec13130d */
+  /* 壳层导航栏 token：浅色主题对应官方交互覆盖层 */
+  --color-nav-hover: rgba(38, 49, 72, 0.06);
+  --color-nav-active: rgba(38, 49, 72, 0.1);
+
+  /* === HeroUI 品牌主色 → dsw brand-primary（浅色中性反色） === */
+  --accent: #0f1115;                   /* brand-primary (bluish-1000) */
+  --accent-foreground: #ffffff;        /* label-primary-foreground (bluish-00) */
+}
+
+/* spinner 动画：与官方 web shell boot 页（AppRoot.module.css）逐字一致。
+   刻意不用 Tailwind 的 animate-spin（其 animation 简写走 var(--animate-spin)
+   间接层，WebView2 下 var() 出现在 animation 简写里可能整条失效导致不转），
+   直接写 animation + @keyframes，确保必定旋转。 */
+@keyframes load-spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-load-spin {
+  animation: load-spin 0.8s linear infinite;
+}
+
+/* 加载态气泡（HeroUI 默认气泡里带 Spinner 的那种）由 Store 持有整个生命周期，
+   用户关闭只会让共享进度气泡消失、随后又被重建，故不提供关闭入口。HeroUI 的默认
+   children 无条件渲染 ToastCloseButton 且 Toast.Provider 不可注入 slots，只能按库
+   自己的 data-slot 标记隐藏。:has() 需 WebView2 105+ / WKWebView 15.4+，旧引擎下
+   选择器失效、按钮照常显示，仅退化不影响功能。 */
+[data-slot="toast"]:has([data-slot="spinner"]) [data-slot="toast-close"] {
+  display: none;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    @apply overflow-hidden text-ink;
+    /* 字体栈与官方 web shell（--dsw-font-family）保持一致 */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 14px;
+  }
+}
+

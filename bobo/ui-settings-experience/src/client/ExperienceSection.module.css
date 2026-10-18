@@ -1,0 +1,219 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 760px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.header > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.title,
+.intro,
+.status,
+.notice,
+.warning,
+.hint,
+.expiring {
+  margin: 0;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.intro,
+.status,
+.hint {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.intro {
+  margin-top: 4px;
+}
+
+.notice {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.notice[data-tone='success'] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.notice[data-tone='error'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.notice[data-tone='warning'] {
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.warning {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The card's own fold trigger. The settings page already folds its cards this
+   way in the proxy pool's source list, so these three rules are that pattern
+   rather than ui-primitives' FoldToggle (a list rollup carrying head/tail copy)
+   or DisclosureRow (a conversation process row). */
+.expandButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.expandButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.expandButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+.chevronOpen,
+.chevronClosed {
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(0deg);
+}
+
+.chevronClosed {
+  transform: rotate(-90deg);
+}
+
+.cardName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.factName {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.factValue {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.expiring {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--dsw-alias-state-warn-label);
+}
+
+.fieldWide,
+.urlField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.urlRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.urlField {
+  flex: 1;
+  min-width: 0;
+}
+
+.healthRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.healthRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

@@ -1,0 +1,24 @@
+name: Setup Xcode
+# 通知插件需要 Swift 6，而 macos-latest 已移除 Xcode 16；按能力选择稳定工具链。
+description: Select the latest stable Xcode with Swift 6 and configure its runtime libraries
+
+runs:
+  using: composite
+  steps:
+    - name: Select latest stable Xcode
+      uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90
+      with:
+        xcode-version: latest-stable
+
+    - name: Verify Swift toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        swift_version="$(xcrun swift --version)"
+        echo "$swift_version"
+        if [[ ! "$swift_version" =~ Swift\ version\ ([0-9]+)\. ]] || (( BASH_REMATCH[1] < 6 )); then
+          echo "::error::The notification plugin requires Swift 6 or newer"
+          exit 1
+        fi
+        developer_dir="$(xcode-select -p)"
+        echo "DYLD_FALLBACK_LIBRARY_PATH=$developer_dir/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx:/usr/lib/swift" >> "$GITHUB_ENV"

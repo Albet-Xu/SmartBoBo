@@ -1,0 +1,14 @@
+# 技能市场检索命令的市场清单（scripts/build_market.py 读取；check 会校验本文件）。
+# publish: false —— 内置工具不进市场目录（用户已拍板）。
+id: bobo-skill-model-tool   # 规范名（与 package.json name 一致）
+dir: command-skill-model    # 包目录名 = 安装目录名
+name: 技能市场检索命令
+description: /skill-model 斜杠命令：给出复杂任务，先去技能市场检索可借鉴的技能再完成任务；mount 行无 config（命令无需 namespace/projection 开关）。
+version: 1.0.0
+publish: false               # 内置工具不进市场目录（用户已拍板）
+builtin: true
+minAppVersion: 2.1.1
+mount:                       # 挂载行模板；name 中 @@APP@@ 占位符 = 应用 packages/bobo 绝对路径（阶段C安装器替换）
+  - id: command-skill-model
+    name: "@@APP@@/command-skill-model/lib/index.js"
+defaultScope: all

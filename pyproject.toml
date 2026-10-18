@@ -1,0 +1,54 @@
+# SmartBoBo · Python 环境（由 uv 管理）
+#
+# - 虚拟环境统一放在项目根的 `.venv/`（uv 标准位置），用下面的命令创建/同步：
+#     uv sync
+# - Python 版本与依赖版本全部锁定在 `uv.lock`（应提交到版本库）。
+# - 唯一用途：CloakBrowser 隐身浏览器运行时（cloak/bin/cloakserve 的 Python 依赖）。
+
+[project]
+name = "smartbobo"
+version = "0.1.0"
+description = "SmartBoBo：CloakBrowser 隐身浏览器 Python 运行时（cloakserve CDP 多路复用服务）"
+# 「环境容器」项目的 requires-python 选宽松值；实际解释器由 uv 与环境内依赖约束决定
+requires-python = ">=3.11"
+dependencies = [
+    # 隐身浏览器运行时 —— [serve] 附带 cloakserve 所需的 playwright / aiohttp / websockets 等
+    "cloakbrowser[serve]==0.6.0",
+    # DBX 数据库 MCP（dbx/scripts/dbx_mcp_server.py）—— FastMCP stdio server 框架
+    "mcp>=1.2,<2",
+    # dbx_connector 的数据库驱动 —— MySQL / MariaDB
+    "pymysql>=1.1.0",
+    # dbx_connector 的数据库驱动 —— PostgreSQL
+    "psycopg[binary]>=3.2.0",
+    # 代理池（scripts/proxy_pool.py）—— 代理 API 拉取与候选探测
+    "httpx>=0.27",
+    # 经验池（skills/*/memory_store.py）—— Qdrant 向量库客户端 + 本地 embedding
+    "qdrant-client>=1.19,<2",
+    "fastembed>=0.6,<1",
+    # 采集/逆向预设的 MCP 依赖（从 BoBo-Handyman 迁移）——
+    # scripts/crawl_common.py 的 HTML→Markdown 与 scripts/skeleton_gen.py 的 DOM 骨架提取
+    "html2text>=2024.2.26",
+    "lxml>=5.0",
+    # 文献汇报模式 —— deck plan → 可编辑 PPTX（scripts/report_pptx.py）
+    "python-pptx>=1.0",
+    # 文献汇报模式 —— report_pptx 的图片资源缩放 / report_qa 的渲染辅助
+    "Pillow>=10.0",
+    # PDF 提取 MCP（scripts/pdf_extract_server.py）—— 文字 + 表格（无 OCR）
+    "pdfplumber>=0.11.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.uv]
+# 本项目只是“Python 环境容器”，本身不构建/分发任何 Python 包，
+# 标记为非 package（virtual project），只安装其依赖、不安装本包自身。
+package = false
+# 固定解释器版本：见项目根的 `.python-version` 文件（`uv python pin 3.13` 生成）。
+
+[tool.pytest.ini_options]
+# 只跑本项目自己的测试；dsh/source/ 里的上游 SDK 测试不属于本项目、
+# 且依赖未安装的 deepseek_harness 包，收集进来只会误报。
+testpaths = ["dbx/tests"]

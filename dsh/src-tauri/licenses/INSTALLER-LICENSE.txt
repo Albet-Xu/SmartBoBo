@@ -1,0 +1,80 @@
+Deepseek Harness Desktop — License Agreement
+
+This Software is licensed under the MIT License, supplemented by the
+Additional Terms (Non-Commercial Condition) below. The Additional Terms
+prevail in the event of any conflict.
+
+=======================================================================
+MIT License
+=======================================================================
+
+MIT License
+
+Copyright (c) 2026 deepseek-harness-desktop contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+=======================================================================
+Additional Terms — Non-Commercial Condition
+=======================================================================
+
+Additional Terms — Non-Commercial Condition
+
+This file supplements the MIT License in the LICENSE file. In addition to the
+rights and conditions granted there, the following condition applies to the
+Software:
+
+1. Non-Commercial Use Only: The Software may not be used, directly or
+   indirectly, for commercial gain, monetary compensation, or as part of a
+   paid commercial product or service.
+
+In the event of any conflict between the MIT License and these additional
+terms, these additional terms prevail.
+
+Copyright (c) 2026 deepseek-harness-desktop contributors
+
+=======================================================================
+In the event of any conflict, the Additional Terms prevail.
+=======================================================================
+
+=======================================================================
+GitHub palette colors — Primer Primitives
+=======================================================================
+
+The MIT License (MIT)
+
+Copyright (c) 2018 GitHub Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

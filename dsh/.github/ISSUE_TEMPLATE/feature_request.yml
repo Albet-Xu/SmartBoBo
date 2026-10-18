@@ -1,0 +1,52 @@
+name: 🚀 新功能建议
+description: 提议为 DeepSeek Harness 桌面端添加新功能
+title: '`功能` | '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你对项目的兴趣，并抽出时间填写这份功能建议！
+
+        请遵循以下标题格式之一：
+        - `` `功能名称` | 简短描述`` — 与某个具体功能相关
+        - `简短描述` — 通用的功能请求
+
+        例如：`` `深色模式` | 支持跟随系统的外观设置``
+  - type: textarea
+    id: problem
+    attributes:
+      label: 请描述问题
+      description: 作为使用 DeepSeek Harness 的用户，我希望 **[目标 / 愿望]**，以便 **[收益]**。如果你打算为这个问题提交 PR，请在描述中告诉我们，谢谢。
+      placeholder: 描述问题
+    validations:
+      required: true
+  - type: textarea
+    id: suggested-solution
+    attributes:
+      label: 建议的解决方案
+      description: 在模块 **[xy]** 中，我们可以提供如下实现……
+      placeholder: 建议的解决方案
+    validations:
+      required: true
+  - type: textarea
+    id: alternative
+    attributes:
+      label: 备选方案
+      description: 清晰、简洁地描述你考虑过的其他解决方案或功能。
+      placeholder: 备选方案
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 补充上下文
+      description: 其他与该功能请求相关的上下文或截图。
+      placeholder: 补充上下文
+  - type: checkboxes
+    id: checkboxes
+    attributes:
+      label: 检查清单
+      description: 提交之前，请确认你已完成以下事项
+      options:
+        - label: 阅读了项目的 [README](https://github.com/dsh-tauri/deepseek-harness-desktop)
+          required: true
+        - label: 检查[已有 issues](https://github.com/dsh-tauri/deepseek-harness-desktop/issues) 中没有相同功能的请求，避免重复提交
+          required: true

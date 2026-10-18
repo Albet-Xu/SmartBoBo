@@ -1,0 +1,364 @@
+name: Build & Release (Offline Bundle)
+
+# 离线安装包：在普通发布流程（release.yml）成功后追加一次带资源构建。
+# 产物把 Node.js 运行时、推荐 dsh 内核、pnpm 随安装包分发，并在构建期把
+# `resources/manifest.jsonc` 的托管根改写成 `$Resources/...`，首次启动直接使用
+# 随包资源，全程不联网。只随包启动 dsh 必需的资源：MinGit 默认不携带（git 托管的
+# 能力在真正使用时才需要，`bundle_git` 可显式开启）。
+#
+# 手动触发有两条路：
+# - 留空 `tag`：试跑。构建当前 ref，发一个 `test-<ref>-<run>` 测试预发布，不碰任何
+#   已发布的 release（与 release.yml 的手动触发约定一致）。
+# - 指定 `tag`：为已有 release 补构建。构建源是该 tag 指向的提交，为避免用触发 ref 的
+#   构建脚本（以及密钥）去签出发布提交，必须**从该 tag 的 ref 触发**。
+#
+# 自动路径（workflow_run）的构建源同理取自 tag：合并 release/* PR 时 release.yml 把 tag
+# 建在 merge commit 上，而触发运行的 head_sha 是 PR 分支的 head，两者不是同一个提交。
+on:
+  workflow_run:
+    workflows: ['Build & Release']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      platform_filter:
+        description: 选择需要打包的平台
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - macos-aarch64
+          - macos-x86_64
+          - windows
+          - linux
+      tag:
+        description: 目标 release tag（留空 = 发测试预发布；指定时需从该 tag 的提交触发）
+        required: false
+        default: ''
+        type: string
+      bundle_git:
+        description: Windows 随包 MinGit（默认关闭：启动 dsh 不需要 Git）
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  # 写权限只给真正上传产物的 finalize；prepare 与三个可复用构建只需要读。
+  contents: read
+
+concurrency:
+  group: release-bundle-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare Offline Bundle
+    # workflow_run 会为 release.yml 的每一次结束（含失败/取消/全部 job 被跳过）触发。
+    # 被跳过的 job 报告的是 success，因此只看 conclusion 会接受「fork PR 被关闭但未合并」
+    # 那种整轮全跳过的运行——那样下面就会 checkout 到 fork 的 head_sha，并在带写权限与
+    # 签名密钥的构建里执行它。必须同时要求触发运行来自本仓库。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.release.outputs.should_build }}
+      tag: ${{ steps.release.outputs.tag }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      version: ${{ steps.meta.outputs.version }}
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      dsh_tag: ${{ steps.meta.outputs.dsh_tag }}
+    steps:
+      - name: Checkout triggering commit
+        uses: actions/checkout@v7
+        with:
+          # 只用它推导默认 tag 与试跑路径的构建源：workflow_run 用触发运行时的 head_sha，
+          # 手动触发用所选 ref。合并 release/* PR 时这个 head_sha 只是 PR 分支的 head，
+          # 不是发布提交——真正的构建源按 tag 推导，见 Resolve release tag。
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          # 不把仓库写令牌留在 .git/config 里（后续步骤不需要 push）。
+          persist-credentials: false
+
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Resolve release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TAG_INPUT: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+          TRIGGER_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tag="$TAG_INPUT"
+          prerelease=false
+          manual=false
+          [ "$EVENT_NAME" = "workflow_dispatch" ] && manual=true
+          # 默认构建源是触发提交（试跑路径用它）；正式发布路径在下面改写成 tag 指向的提交。
+          source_ref="$TRIGGER_REF"
+
+          emit() {
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+            echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          }
+          # 自动路径（workflow_run 为每一次成功运行都触发，含测试发布）只跳过并告警；
+          # 手动指定了 tag 说明用户有明确目标，静默跳过会让人以为构建成功。
+          skip() {
+            emit
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::$1"
+            exit 0
+          }
+          fail() {
+            if [ "$manual" = true ]; then
+              echo "::error::$1; dispatch this workflow from the $tag ref, or clear the tag input to publish a test prerelease instead"
+              exit 1
+            fi
+            skip "$1; skipping the offline bundle build"
+          }
+
+          if [ "$manual" = true ] && [ -z "$tag" ]; then
+            # 手动触发且未指定 tag = 试跑：不碰任何已发布的 release，按 release.yml
+            # 的手动触发约定发一个测试预发布。
+            tag="test-${REF_NAME}-${RUN_NUMBER}"
+            prerelease=true
+            emit
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "offline bundle test release: $tag ($version) from $source_ref"
+            exit 0
+          fi
+
+          # release.yml 的手动触发是试跑：它发的是 `test-<ref>-<run>` 预发布，tag 建在
+          # 默认分支上而不指向本次构建的提交；按版本号推导出的 `v<version>` 只可能命中
+          # 无关的旧发布。这类运行不参与自动打包，需要离线包时手动触发本 workflow。
+          if [ "$TRIGGER_EVENT" = "workflow_dispatch" ]; then
+            skip "the triggering Build & Release run is a manual test release, whose tag does not point at the commit it built; for a published release dispatch this workflow with its tag (from that tag's ref), or leave the tag input empty for a bundle test prerelease"
+          fi
+
+          if [ -z "$tag" ] && [[ "$RUN_HEAD_BRANCH" == v* ]]; then
+            tag="$RUN_HEAD_BRANCH"
+          fi
+          if [ -z "$tag" ]; then
+            tag="v$version"
+          fi
+
+          gh release view "$tag" >/dev/null 2>&1 \
+            || skip "release $tag does not exist, skipping the offline bundle build"
+
+          # 构建源必须是 **tag 指向的提交**，而不是触发运行的 head_sha：合并 release/* PR 时
+          # release.yml 把 tag 建在 merge commit 上，而 workflow_run 的 head_sha 是 PR 分支的
+          # head——两者不是同一个提交，按 head_sha 构建会被下面的同源校验挡掉，正式发布因此
+          # 永远出不了离线包。tag 是 release 的权威来源，finalize 的
+          # `gh release upload --clobber` 也就只会覆盖同一个提交构建的产物。
+          #
+          # 解析不到时**不回退**到触发提交：GitHub 在 tag ref 被删除后仍保留 release 记录，
+          # 那时 `gh release view` 成功而解析失败，必须当作不安全。release 提交早于离线包
+          # 流水线时（同一版本号的旧 tag、试跑分支）同样只跳过并告警，不去构建一个没有
+          # `scripts/bundle-metadata.mjs` 的提交。
+          tag_commit="$(git rev-parse --verify --quiet "${tag}^{commit}" || true)"
+          if [ -z "$tag_commit" ]; then
+            fail "cannot resolve tag $tag locally"
+          elif ! git cat-file -e "${tag_commit}:scripts/bundle-metadata.mjs" 2>/dev/null; then
+            fail "tag $tag points at $tag_commit, which predates the offline bundle pipeline"
+          elif [ "$manual" = true ] && [ "$(git rev-parse HEAD)" != "$tag_commit" ]; then
+            fail "tag $tag points at $tag_commit but this run is dispatched from $(git rev-parse HEAD)"
+          fi
+
+          source_ref="$tag_commit"
+          emit
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
+          echo "offline bundle target release: $tag ($version) from $source_ref"
+          if [ "$source_ref" != "$TRIGGER_REF" ]; then
+            echo "triggering head $TRIGGER_REF is not the release commit; building the tagged commit instead"
+          fi
+
+      # 构建源、元数据与产物版本必须来自同一个提交：上面按 tag 推导出的 source_ref 是发布
+      # 提交，而工作区此刻还停在触发 ref 上（合并 release/* PR 时两者不同）。这里重新签出
+      # 发布提交，后面的 `scripts/bundle-metadata.mjs` 与产物版本号都以它为准。
+      - name: Checkout release commit
+        if: steps.release.outputs.should_build == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release.outputs.source_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve bundled core tag
+        id: meta
+        if: steps.release.outputs.should_build == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 产物名里的版本号取自 release 提交，而不是触发 dispatch 的那个 ref。
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          node scripts/bundle-metadata.mjs
+
+  build-macos:
+    name: Build macOS Offline Bundle
+    needs: prepare
+    if: >-
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.should_build == 'true' &&
+      (github.event_name != 'workflow_dispatch' ||
+       inputs.platform_filter == 'all' ||
+       startsWith(inputs.platform_filter, 'macos-'))
+    uses: ./.github/workflows/build-bundle-macos.yml
+    with:
+      platform_filter: ${{ github.event_name == 'workflow_dispatch' && inputs.platform_filter || 'all' }}
+      source_ref: ${{ needs.prepare.outputs.source_ref }}
+      dsh_tag: ${{ needs.prepare.outputs.dsh_tag }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+  build-windows:
+    name: Build Windows Offline Bundle
+    needs: prepare
+    if: >-
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.should_build == 'true' &&
+      (github.event_name != 'workflow_dispatch' ||
+       inputs.platform_filter == 'all' ||
+       inputs.platform_filter == 'windows')
+    uses: ./.github/workflows/build-bundle-windows.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.source_ref }}
+      dsh_tag: ${{ needs.prepare.outputs.dsh_tag }}
+      bundle_git: ${{ github.event_name == 'workflow_dispatch' && inputs.bundle_git || false }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+  build-linux:
+    name: Build Linux Offline Bundle
+    needs: prepare
+    if: >-
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.should_build == 'true' &&
+      (github.event_name != 'workflow_dispatch' ||
+       inputs.platform_filter == 'all' ||
+       inputs.platform_filter == 'linux')
+    uses: ./.github/workflows/build-bundle-linux.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.source_ref }}
+      dsh_tag: ${{ needs.prepare.outputs.dsh_tag }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+  finalize:
+    name: Publish Offline Installers
+    needs: [prepare, build-macos, build-windows, build-linux]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      needs.prepare.outputs.should_build == 'true' &&
+      ((github.event_name != 'workflow_dispatch' &&
+        needs.build-macos.result == 'success' &&
+        needs.build-windows.result == 'success' &&
+        needs.build-linux.result == 'success') ||
+       (github.event_name == 'workflow_dispatch' &&
+        (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped') &&
+        (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') &&
+        (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build outputs
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-bundle-*
+          path: release-assets
+
+      # 统一命名为 Deepseek.Harness.Desktop_Bundle_<version>.<ext>：与普通安装包
+      # （Tauri 默认名）区分，且同一 release 内不会重名。macOS 两个架构的产物
+      # 扩展名相同，必须带架构后缀才不会互相覆盖。
+      - name: Rename offline installers
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          shopt -s nullglob
+          for dir in release-assets/*/; do
+            artifact="$(basename "$dir")"
+            suffix=""
+            case "$artifact" in
+              *macos-aarch64*) suffix="_aarch64" ;;
+              *macos-x86_64*) suffix="_x64" ;;
+            esac
+            for file in "$dir"*; do
+              [ -f "$file" ] || continue
+              base="$(basename "$file")"
+              ext="${base##*.}"
+              cp "$file" "upload/Deepseek.Harness.Desktop_Bundle_${VERSION}${suffix}.${ext}"
+            done
+          done
+          find upload -type f -print | sort
+
+      - name: Verify offline installers
+        run: |
+          set -euo pipefail
+          [ -n "$(find upload -type f -print -quit)" ] || {
+            echo '::error::No offline installers were produced'
+            exit 1
+          }
+
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # finalize 未 checkout，gh 无法从 .git 推断仓库，需显式指定。
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          DSH_TAG: ${{ needs.prepare.outputs.dsh_tag }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+          # 试跑路径的 test-* release 还不存在，按 release.yml 的手动触发约定新建；
+          # 真实发布路径的 release 由 release.yml 的 finalize 建好，这里只上传。
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            # tag 不存在时 GitHub 把 tag 建在默认分支上，而产物构建自 source_ref：
+            # 必须显式 --target，否则测试预发布的 tag 与产物不同源（无法按 tag 追溯
+            # 产物是哪个提交构建的）。tag 已存在时 --target 被忽略，真实发布路径不受影响。
+            #
+            # 例外：GITHUB_TOKEN 未被授权改动工作流文件，构建提交相对默认分支新增/修改
+            # 了 `.github/workflows/**` 时该调用会 404（发布前试跑正是这种情形）。此时退回
+            # 不带 target 的创建并告警——产物可追溯性让位于「试跑必须能出包」。
+            title="Release $RELEASE_TAG"
+            if ! gh release create "$RELEASE_TAG" --draft --target "$SOURCE_REF" --title "$title"; then
+              echo "::warning::cannot pin $RELEASE_TAG to $SOURCE_REF (workflow-file permission); creating it on the default branch instead"
+              gh release create "$RELEASE_TAG" --draft --title "$title"
+            fi
+          fi
+          mapfile -d '' assets < <(find upload -type f -print0)
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          fi
+          {
+            echo "### Offline bundle assets"
+            echo
+            echo "Bundled core: \`$DSH_TAG\` · resources mapped to \`\$Resources/{node,pnpm,dsh}\`"
+            echo
+            for asset in "${assets[@]}"; do
+              echo "- \`$(basename "$asset")\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

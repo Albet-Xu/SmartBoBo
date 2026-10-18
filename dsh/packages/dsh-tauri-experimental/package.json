@@ -1,0 +1,73 @@
+{
+  "name": "dsh-tauri-experimental",
+  "type": "module",
+  "version": "0.3.1",
+  "description": "DeepSeek Harness 的轮次级变更追踪：每轮自动生成 Git 快照，并在输入坞芯片里展示当前轮次改动的文件与 +N -M；文件恢复交由推荐的 dsh-rewind 插件完成。",
+  "author": "Hairyf <wwu710632@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dsh-tauri-desk/dsh-tauri-plugins.git"
+  },
+  "bugs": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins/issues",
+  "keywords": [
+    "dsh",
+    "plugin",
+    "dsh-plugin",
+    "tauri",
+    "deepseek-harness",
+    "rewind",
+    "snapshot"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": "./dist/client.cjs",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "cordis.patch.yml",
+    "dist"
+  ],
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-chat",
+        "dsh-tauri",
+        "dsh-tauri-ui"
+      ],
+      "external": [
+        "dsh-tauri/client",
+        "dsh-tauri-ui/client"
+      ],
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepublishOnly": "nr build",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "dsh-h3": "catalog:",
+    "dsh-tauri": "workspace:*",
+    "dsh-tauri-ui": "workspace:*",
+    "h3": "catalog:",
+    "hookable": "catalog:utils",
+    "pathe": "catalog:utils",
+    "unstorage": "catalog:utils"
+  },
+  "devDependencies": {
+    "dsh-tauri-tsdown": "workspace:*",
+    "tsdown": "catalog:cli"
+  }
+}

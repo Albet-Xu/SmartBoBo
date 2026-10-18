@@ -1,0 +1,271 @@
+/*
+ * Built-in browser panel. Every colour, border, and font comes from a --dsw-*
+ * semantic token so the panel follows the active theme.
+ *
+ * The frame surface is the stage's whole box: the canvas fills it and
+ * letterboxes the page inside it with `object-fit: contain`, which is what
+ * keeps the page's aspect ratio under both a width-bound and a height-bound
+ * container. The pointer mapping in CloakPanel.tsx applies the same
+ * "contained rect" arithmetic the browser uses here.
+ */
+
+.root {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+}
+
+.toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 5px 6px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+/* The tab strip only exists while a link has opened a second page; a single
+   page keeps the panel exactly as narrow-topped as it was before. */
+.tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 5px 6px 4px;
+  overflow-x: auto;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+  scrollbar-width: thin;
+}
+
+.tab,
+.tabActive {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  max-width: 148px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.tabActive {
+  border-color: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.tabPick {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxxs-11);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.tabActive .tabPick {
+  color: var(--dsw-alias-label-primary);
+}
+
+.tabClose {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 24px;
+  padding: 0 4px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.tabClose:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.address,
+.insert {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+}
+
+.address:focus,
+.insert:focus {
+  outline: 1px solid var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+  outline-offset: -1px;
+}
+
+.tool {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tool:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.tool:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+}
+
+.status {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 4px 10px;
+  font: var(--dsw-font-xxxs-11);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.phase {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.pageTitle {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pageUrl {
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fault {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  color: var(--dsw-alias-state-error-primary);
+  font: var(--dsw-font-xxxs-11);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);
+}
+
+.stage {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* The mirror owns every gesture inside this box: dragging must not scroll
+     the panel behind it, and the wheel handler prevents page zoom by hand. */
+  touch-action: none;
+}
+
+.surface:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+  outline-offset: -1px;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.noticeText {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xs-13);
+}
+
+.insertRow {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+  padding: 5px 6px 0;
+}
+
+.hint {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 10px 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxxs-11);
+}
+
+.titleIcon {
+  flex: 0 0 auto;
+  margin-right: 4px;
+}
+
+/* Invisible IME carrier: the system input method composes here (its candidate
+   window follows this box, which pointer-down parks at the click point); every
+   composition step is mirrored into the remote page over CDP. */
+.imeInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  resize: none;
+  overflow: hidden;
+  z-index: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+}

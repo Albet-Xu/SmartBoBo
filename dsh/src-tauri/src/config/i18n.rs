@@ -1,0 +1,91 @@
+use std::sync::atomic::{AtomicU8, Ordering};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Lang {
+    Zh,
+    En,
+}
+
+static CURRENT_LANG: AtomicU8 = AtomicU8::new(0); // 0 = zh, 1 = en
+
+pub fn set_language(lang: Lang) {
+    CURRENT_LANG.store(
+        match lang {
+            Lang::Zh => 0,
+            Lang::En => 1,
+        },
+        Ordering::SeqCst,
+    );
+}
+
+fn lang() -> Lang {
+    if CURRENT_LANG.load(Ordering::SeqCst) == 1 {
+        Lang::En
+    } else {
+        Lang::Zh
+    }
+}
+
+pub fn t(key: &str) -> String {
+    let (zh, en): (&str, &str) = match key {
+        "install.downloading" => ("正在下载", "Downloading"),
+        "install.extracting" => ("正在解压", "Extracting"),
+        "install.done" => ("依赖已安装完毕", "Dependencies installed"),
+        "menu.run" => ("运行与管理", "Run & Manage"),
+        "menu.application" => ("应用", "Application"),
+        "menu.profiles" => ("档案管理…", "Manage Profiles…"),
+        "menu.plugins" => ("插件管理…", "Manage Plugins…"),
+        "menu.harness" => ("核心管理…", "Manage Core…"),
+        "menu.help" => ("帮助", "Help"),
+        "menu.file" => ("文件", "File"),
+        "menu.new_window" => ("新建窗口", "New Window"),
+        "menu.new_chat" => ("新聊天", "New Chat"),
+        "menu.open_folder" => ("打开文件夹", "Open Folder"),
+        "menu.close" => ("关闭", "Close"),
+        "menu.quit" => ("退出", "Quit"),
+        "menu.documentation" => ("文档", "Documentation"),
+        "menu.desktop_feedback" => ("桌面版问题反馈", "Desktop Feedback"),
+        "menu.harness_feedback" => (
+            "DeepSeek Harness 官方反馈",
+            "DeepSeek Harness Official Feedback",
+        ),
+        "menu.settings" => ("设置…", "Settings…"),
+        "menu.services" => ("服务", "Services"),
+        "menu.hide" => ("隐藏", "Hide"),
+        "menu.hide_others" => ("隐藏其他", "Hide Others"),
+        "menu.show_all" => ("显示全部", "Show All"),
+        "menu.view" => ("视图", "View"),
+        "menu.toggle_sidebar" => ("显示/隐藏侧边栏", "Toggle Sidebar"),
+        "menu.toggle_right_panel" => ("显示/隐藏右侧面板", "Toggle Right Panel"),
+        "menu.open_terminal" => ("打开终端", "Open Terminal"),
+        "menu.search_chats" => ("查找聊天", "Search Chats"),
+        "menu.zoom_in" => ("放大", "Zoom In"),
+        "menu.zoom_out" => ("缩小", "Zoom Out"),
+        "menu.actual_size" => ("实际大小", "Actual Size"),
+        "menu.window" => ("窗口", "Window"),
+        "menu.minimize" => ("最小化", "Minimize"),
+        "menu.zoom" => ("缩放", "Zoom"),
+        "menu.bring_all_to_front" => ("全部置于顶层", "Bring All to Front"),
+        "menu.keyboard_shortcuts" => ("显示键盘快捷键", "Show Keyboard Shortcuts"),
+        "menu.enter_fullscreen" => ("进入全屏幕", "Enter Full Screen"),
+        "menu.exit_fullscreen" => ("退出全屏幕", "Exit Full Screen"),
+        "menu.about" => ("关于 Desktop", "About Desktop"),
+        "menu.toggle_devtools" => ("切换开发者工具", "Toggle Developer Tools"),
+        "menu.task_manager" => ("任务管理器", "Task Manager"),
+        "menu.run_logs" => ("运行日志", "Run Logs"),
+        "menu.check_update" => ("检查更新", "Check for Updates"),
+        "menu.restart" => ("重启 Harness", "Restart Harness"),
+        "menu.edit" => ("编辑", "Edit"),
+        "menu.undo" => ("撤销", "Undo"),
+        "menu.redo" => ("重做", "Redo"),
+        "menu.cut" => ("剪切", "Cut"),
+        "menu.copy" => ("复制", "Copy"),
+        "menu.paste" => ("粘贴", "Paste"),
+        "menu.select_all" => ("全选", "Select All"),
+        _ => (key, key),
+    };
+    match lang() {
+        Lang::Zh => zh.to_string(),
+        Lang::En => en.to_string(),
+    }
+}

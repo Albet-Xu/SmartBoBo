@@ -1,0 +1,12 @@
+{
+ "ready": true,
+ "qdrant_configured": true,
+ "qdrant_reachable": true,
+ "qdrant_url": "http://47.102.138.180:6333",
+ "qdrant_source": "config",
+ "error": "",
+ "readonly": false,
+ "threshold": 2.0,
+ "collection": "report_experience",
+ "checked_at": "2026-10-14T08:07:03+00:00"
+}

@@ -1,0 +1,1842 @@
+{
+ "ad995f651f9440df875d834d7ce15901": {
+  "id": "ad995f651f9440df875d834d7ce15901",
+  "report_type": "multi",
+  "tags": [
+   "逐篇罗列",
+   "对比矩阵",
+   "主线不清"
+  ],
+  "stage": "R2",
+  "kind": "narrative",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "compare",
+   "result",
+   "takeaway"
+  ],
+  "applicable_when": "一次汇报要讲两篇以上论文、且这些论文能被放在同一组问题下比较时（R2 排页序）",
+  "pitfalls": [
+   "页序按论文切：第 1 篇 XX 的研究、第 2 篇 YY 的研究，每页结构完全相同",
+   "对比矩阵页放在结果页之后，听众先看零散结果、后面才补上对照框架"
+  ],
+  "attempts": [
+   {
+    "method": "按论文逐篇排页序（背景→方法→结果→结论，重复三遍）",
+    "result": "fail",
+    "note": "听完只记得'有三篇论文'，说不出它们合起来回答了什么问题"
+   },
+   {
+    "method": "改按问题/维度切页，论文降为页内证据；对比矩阵提前到结果页之前",
+    "result": "success",
+    "note": "先用矩阵建立可比框架再看结果，听众记住的是维度与判断"
+   }
+  ],
+  "final_recipe": "多篇汇报的页序按问题/维度切，不按论文切；对比矩阵页（role=compare）放在结果页之前，先给对照框架再看结果；同一维度下并列各篇怎么说，而不是逐篇复述",
+  "positive_lessons": [
+   "页序按论文切是逐篇罗列的根因——改页序比改文案有效得多"
+  ],
+  "negative_lessons": [
+   "不要把'每篇都讲到'当成汇报完整"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §1.2 / §3.4 / §7 逐篇罗列"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "f82040bc55179a65",
+  "created_at": "2026-09-23T16:12:36+00:00",
+  "updated_at": "2026-09-23T16:12:36+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "ad995f651f9440df875d834d7ce15901",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\multi\\2026-09-23T16-12-36+00-00-ad995f65.md"
+ },
+ "47768fc1f08e4e339efbe3a2d62e3fb5": {
+  "id": "47768fc1f08e4e339efbe3a2d62e3fb5",
+  "report_type": "multi",
+  "tags": [
+   "共同结论",
+   "分歧点",
+   "结论前置"
+  ],
+  "stage": "R2",
+  "kind": "narrative",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "takeaway"
+  ],
+  "applicable_when": "多篇论文结论方向不一致、且要求在 20 分钟内讲完时（takeaway 页一定会被现场追问）",
+  "pitfalls": [
+   "只写共同结论不写分歧，等于把最值得讨论的部分藏掉",
+   "分歧只写'结论不一致'，不指出分歧发生在哪一层",
+   "几篇结论明显不同还硬凑一条共同结论"
+  ],
+  "attempts": [
+   {
+    "method": "takeaway 只罗列共同结论",
+    "result": "fail",
+    "note": "现场第一个问题就是'那它们到底哪里不一样'，答不上来"
+   },
+   {
+    "method": "共同结论与分歧点并列；分歧按测量口径 / 样本与情境 / 方法前提 / 外推范围分层写明",
+    "result": "success",
+    "note": "分歧从被追问的漏洞变成讨论的入口"
+   }
+  ],
+  "final_recipe": "takeaway 页同时承载共同结论（2–4 条，注明哪几篇支持）与分歧点；分歧必须指到具体层（测量口径 / 样本与情境 / 方法前提 / 外推范围）；确实没有共同结论就如实写「目前无一致结论，分歧在 X」，硬凑一条会被现场追问，比承认没有更糟",
+  "positive_lessons": [
+   "矛盾与分歧比一致更有信息量，是汇报里最值钱的部分"
+  ],
+  "negative_lessons": [
+   "不要为了叙事顺畅只报一致结论的方向"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §3.3 / §7 共同结论硬凑",
+    "dsh/packages/bobo/plugins/report-gate.mjs multi_no_takeaway"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "4dedcf72f7698150",
+  "created_at": "2026-09-23T16:12:36+00:00",
+  "updated_at": "2026-09-23T16:12:36+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "47768fc1f08e4e339efbe3a2d62e3fb5",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\multi\\2026-09-23T16-12-36+00-00-47768fc1.md"
+ },
+ "98fb3e07c8944c2ab33250357d86c092": {
+  "id": "98fb3e07c8944c2ab33250357d86c092",
+  "report_type": "survey",
+  "tags": [
+   "缺少对比",
+   "章节失衡"
+  ],
+  "stage": "R2",
+  "kind": "narrative",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "outline",
+   "compare",
+   "takeaway"
+  ],
+  "applicable_when": "综述式串讲多篇文献、听众需要看清这一片文献的脉络与缺口时",
+  "pitfalls": [
+   "按年份或作者顺序串讲，听众听到的是一份带日期的清单",
+   "只讲每篇做了什么，不说清支与支之间的关系"
+  ],
+  "attempts": [
+   {
+    "method": "按发表年份从早到晚依次串讲",
+    "result": "fail",
+    "note": "像朗读文献清单，说不清这一片文献分成哪几支"
+   },
+   {
+    "method": "先立分类脉络（分几支、支间什么关系），compare 用两页：一页横向对照表、一页按维度汇总",
+    "result": "success",
+    "note": "听众能复述出脉络与缺口，不再只记得一串年份"
+   }
+  ],
+  "final_recipe": "综述串讲先立分类脉络（分几支、支与支的关系），再按脉络展开——体现不出分类就还是罗列；compare 页建议 ≥2 页（一页横向对照、一页按维度汇总）；takeaway 写「这一片文献合起来说明了什么、还缺什么」",
+  "positive_lessons": [],
+  "negative_lessons": [
+   "按年份/作者罗列不是综述，是清单"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §1.5 / §2"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "40f2a07b01bdd503",
+  "created_at": "2026-09-23T16:12:36+00:00",
+  "updated_at": "2026-09-23T16:12:36+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "98fb3e07c8944c2ab33250357d86c092",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\survey\\2026-09-23T16-12-36+00-00-98fb3e07.md"
+ },
+ "520ca2d2fee146fcb0062631049c2854": {
+  "id": "520ca2d2fee146fcb0062631049c2854",
+  "report_type": "single",
+  "tags": [
+   "缺少启发",
+   "复述摘要"
+  ],
+  "stage": "R2",
+  "kind": "narrative",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "takeaway",
+   "result"
+  ],
+  "applicable_when": "精读单篇论文、听众是与自己同一课题组的成员时",
+  "pitfalls": [
+   "takeaway 是论文结论章的复述，没有落到本组",
+   "启发写成'该方法值得借鉴''需要进一步研究'这类空话",
+   "每页 bullets 是论文摘要的翻译"
+  ],
+  "attempts": [
+   {
+    "method": "把 takeaway 写成论文结论的提炼",
+    "result": "fail",
+    "note": "听众问'那我们能用什么'时无话可说"
+   },
+   {
+    "method": "takeaway 落成具体可迁移点：哪份数据能用、哪个方法能改、哪个假设被推翻",
+    "result": "success",
+    "note": "汇报有了本组价值，讨论能接着往下走"
+   }
+  ],
+  "final_recipe": "单篇精读的 takeaway 必须给出「对我们（本组课题 / 数据 / 方法）的启发」，落成具体可迁移点；每页先写本页主张（claims）再找支撑，支撑不上的句子删掉——先写主张再找证据，才不会退化成摘要复述",
+  "positive_lessons": [
+   "启发要具体到本组的某份数据或某个假设，形容词没有用"
+  ],
+  "negative_lessons": [
+   "不要用'值得借鉴'代替可迁移点"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §1.1 / §7 摘要复述·启发空转"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "fd966e3737b59daf",
+  "created_at": "2026-09-23T16:12:36+00:00",
+  "updated_at": "2026-09-23T16:12:36+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "520ca2d2fee146fcb0062631049c2854",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-23T16-12-36+00-00-520ca2d2.md"
+ },
+ "f8426d941d5a44f69a958eecd03a12a2": {
+  "id": "f8426d941d5a44f69a958eecd03a12a2",
+  "report_type": "seminar",
+  "tags": [
+   "背景过长",
+   "缺少启发"
+  ],
+  "stage": "R2",
+  "kind": "narrative",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "background",
+   "takeaway"
+  ],
+  "applicable_when": "组会汇报（进展或文献分享）、听众已经熟悉本领域基本情况时",
+  "pitfalls": [
+   "background 从论文摘要起笔，讲了三页领域综述",
+   "takeaway 写'值得深入研究'，没有下一步动作"
+  ],
+  "attempts": [
+   {
+    "method": "background 按论文引言的顺序讲领域背景",
+    "result": "fail",
+    "note": "组会听众早就知道这个领域，占掉的时间让结果页只剩一页"
+   },
+   {
+    "method": "background 从本组上一轮的结论或卡点起笔，只负责把问题逼出来",
+    "result": "success",
+    "note": "背景一页讲完，时间留给结果与讨论，落点是下一步动作"
+   }
+  ],
+  "final_recipe": "组会汇报的 background 从本组上一轮的结论或卡点起笔，不从论文摘要起笔，只负责把问题逼出来（超过一页就是没做取舍）；takeaway 落成具体动作——下一步读什么、跑什么、改什么假设",
+  "positive_lessons": [
+   "组会的价值在'接下来做什么'，背景越短越好"
+  ],
+  "negative_lessons": [
+   "background 超过一页就是没做取舍"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §1.3 / §2 硬规则 2 / §7 背景过长"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "f88be33ae26c5e83",
+  "created_at": "2026-09-23T16:12:36+00:00",
+  "updated_at": "2026-09-23T16:12:36+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "f8426d941d5a44f69a958eecd03a12a2",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\seminar\\2026-09-23T16-12-36+00-00-f8426d94.md"
+ },
+ "7a61aa1b434d45a086303a9b76d4ef30": {
+  "id": "7a61aa1b434d45a086303a9b76d4ef30",
+  "report_type": "proposal",
+  "tags": [
+   "章节失衡",
+   "方法讲太细"
+  ],
+  "stage": "R2",
+  "kind": "narrative",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "question",
+   "compare",
+   "limitation",
+   "takeaway"
+  ],
+  "applicable_when": "开题/选题汇报，听众会追问'这个问题别人做过没有''数据能不能拿到'时",
+  "pitfalls": [
+   "question 写成主题方向而不是可检验的问题",
+   "limitation 写'文章存在一定局限'，不写数据可得性与识别前提",
+   "把拟用方法的公式推导讲满一页"
+  ],
+  "attempts": [
+   {
+    "method": "按'领域现状 → 我要做什么'两段式讲",
+    "result": "fail",
+    "note": "被追问'为什么不是已有论文已经回答过的问题'时答不上来"
+   },
+   {
+    "method": "question 写成可被证伪的形式并说明与已有工作的差异；compare 页并排'已有做法 vs 拟用做法'及各自前提假设；limitation 写可行性与风险",
+    "result": "success",
+    "note": "被追问最多的三处都提前有了答案"
+   }
+  ],
+  "final_recipe": "开题的 question 必须可被检验/可被证伪，并说明为什么不是已有论文已回答的问题；compare 页并排「已有做法 vs 拟用做法」及各自的前提假设（这是被追问最多的地方）；limitation 写可行性与风险——数据能不能拿到、识别前提能不能满足，不写'文章存在局限'；takeaway 给预期贡献与下一步时间表",
+  "positive_lessons": [],
+  "negative_lessons": [
+   "开题的局限页写形式化套话，等于把最会被追问的地方留空"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §1.4 / §7 局限形式化"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "ac0f817b1f23b6a5",
+  "created_at": "2026-09-23T16:12:37+00:00",
+  "updated_at": "2026-09-23T16:12:37+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "7a61aa1b434d45a086303a9b76d4ef30",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\proposal\\2026-09-23T16-12-37+00-00-7a61aa1b.md"
+ },
+ "3f2ce53072104802b1f5ec03d95f52e3": {
+  "id": "3f2ce53072104802b1f5ec03d95f52e3",
+  "report_type": "single",
+  "tags": [
+   "背景过长",
+   "主线不清"
+  ],
+  "stage": "R2",
+  "kind": "content",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "background",
+   "outline"
+  ],
+  "applicable_when": "通读材料后觉得可讲的内容明显多于时长能装下时（R2 做内容取舍）",
+  "pitfalls": [
+   "一页塞两个主张，听众一个都记不住",
+   "决定不讲的内容不留痕，返修时被反复加回来",
+   "删不掉任何东西，于是每页都讲一点"
+  ],
+  "attempts": [
+   {
+    "method": "先把论文内容按页平均分配",
+    "result": "fail",
+    "note": "每页都成立，但整场说不出想让人记住什么"
+   },
+   {
+    "method": "先定 2–3 条记忆点，再按'删掉它听众还能不能复述记忆点'逐条取舍；决定不讲的内容与理由写进 storyline.md",
+    "result": "success",
+    "note": "返修时不再反复加回已经砍掉的内容"
+   }
+  ],
+  "final_recipe": "取舍判据只有一条——删掉它，听众还能不能复述你想让他们记住的那两三句话；一页只放一个能被质疑的主张（写进 claims）；background 超过一页就砍；「决定不讲」的内容与理由必须写下来，否则返修时一定会被加回来",
+  "positive_lessons": [
+   "把'不讲什么'写下来，比写'讲什么'更能省掉一轮返修"
+  ],
+  "negative_lessons": [
+   "砍掉的内容不在文档里留痕，返修时一定会被加回来"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §2 三条硬取舍规则 / §5 叙事主线"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "9159b423f753e92d",
+  "created_at": "2026-09-23T16:12:37+00:00",
+  "updated_at": "2026-09-23T16:12:37+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "3f2ce53072104802b1f5ec03d95f52e3",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-23T16-12-37+00-00-3f2ce530.md"
+ },
+ "3b60c249ada14fa8b22ed6def6b9683b": {
+  "id": "3b60c249ada14fa8b22ed6def6b9683b",
+  "report_type": "seminar",
+  "tags": [
+   "关键数字缺失",
+   "局限缺失"
+  ],
+  "stage": "R1",
+  "kind": "content",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "method",
+   "result",
+   "limitation"
+  ],
+  "applicable_when": "做逐篇论文抽取、准备进入叙事组织之前（R1 出口）",
+  "pitfalls": [
+   "只抽'这篇讲了什么'的自由文本，没有固定字段",
+   "局限一栏空着，到 limitation 页才发现无话可说",
+   "抽取阶段就去想页序，结果六字段抽不齐"
+  ],
+  "attempts": [
+   {
+    "method": "读一篇写一段摘要，进叙事阶段再回头找细节",
+    "result": "fail",
+    "note": "叙事阶段发现缺局限与可迁移点，只能重读原文，等于把返工写进流程"
+   },
+   {
+    "method": "每篇固定抽六字段并记页码：研究问题 / 方法（识别策略与前提）/ 数据与样本 / 主要结果 / 作者自己承认的局限 / 对我们的可迁移点",
+    "result": "success",
+    "note": "叙事层只做组织，不再回炉读原文"
+   }
+  ],
+  "final_recipe": "R1 每篇按六字段抽取并记页码：研究问题 / 方法（识别策略及其前提）/ 数据与样本 / 主要结果 / 作者自己承认的局限 / 对我们的可迁移点；抽不齐六字段的论文不要指望在叙事层补齐——回 R1 补齐",
+  "positive_lessons": [],
+  "negative_lessons": [
+   "到了叙事阶段才回头找局限与可迁移点，等于把返工写进流程"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §8 与上下游的接口",
+    "dsh/packages/bobo/plugins/report-gate.mjs 阶段判据 R1"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "f9dba6420d7cc2f6",
+  "created_at": "2026-09-23T16:12:37+00:00",
+  "updated_at": "2026-09-23T16:12:37+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "3b60c249ada14fa8b22ed6def6b9683b",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\seminar\\2026-09-23T16-12-37+00-00-3b60c249.md"
+ },
+ "4372130845de4d5e966766d6f19a40c7": {
+  "id": "4372130845de4d5e966766d6f19a40c7",
+  "report_type": "survey",
+  "tags": [
+   "对比矩阵",
+   "文字溢出"
+  ],
+  "stage": "R3",
+  "kind": "content",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "zh",
+  "page_roles": [
+   "compare"
+  ],
+  "applicable_when": "综述/多篇汇报要现场展示对比矩阵页、且矩阵同时存在人读底稿与 deck plan 两处时",
+  "pitfalls": [
+   "矩阵单元格写整句论证，一张表挤成小字",
+   "底稿与 deck plan 的 compare 页内容不一致",
+   "把作者、期刊、年份做成矩阵维度"
+  ],
+  "attempts": [
+   {
+    "method": "把每条判断的完整论证写进表格单元格",
+    "result": "fail",
+    "note": "单元格塞满整句，字号被压到下限、列宽挤到看不清"
+   },
+   {
+    "method": "单元格只写结论短语，论证移到 notes 讲稿；底稿与 plan 两处保持同一份内容",
+    "result": "success",
+    "note": "现场能一眼扫懂，被追问时讲稿里有论证"
+   }
+  ],
+  "final_recipe": "矩阵页单元格写结论短语，论证放 notes 讲稿；维度只列 3–6 个服务主线判断的、跨篇都填得上的项（某一篇真的没报告就写'未报告'，不要套用别的含义）；人读底稿与 deck plan 的 compare 页必须一致；不要用作者/期刊/年份做维度——那是 reference 页的事",
+  "positive_lessons": [
+   "底稿放写作对照、矩阵页放现场展示，两处内容一致但详略不同"
+  ],
+  "negative_lessons": [
+   "不要把元数据做成对比维度，那种表扫不出任何差异"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §3.1 / §3.2 / §7 矩阵变成元数据表",
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §1.4 table"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "f93592f4fddd25a3",
+  "created_at": "2026-09-23T16:12:37+00:00",
+  "updated_at": "2026-09-23T16:12:37+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "4372130845de4d5e966766d6f19a40c7",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\survey\\2026-09-23T16-12-37+00-00-43721308.md"
+ },
+ "bf356989b2f544cda1df258cdac58ad6": {
+  "id": "bf356989b2f544cda1df258cdac58ad6",
+  "report_type": "single",
+  "tags": [
+   "断章取义",
+   "关键数字缺失"
+  ],
+  "stage": "R3",
+  "kind": "content",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "background",
+   "question",
+   "method",
+   "data",
+   "result",
+   "compare",
+   "limitation",
+   "takeaway"
+  ],
+  "applicable_when": "R3 写 deck plan 的实质页（background/question/method/data/result/compare/limitation/takeaway）时",
+  "pitfalls": [
+   "claim 的 source 只写'该论文'或作者姓氏",
+   "evidence_id 是编的，证据层里查不到",
+   "把论文讨论里的展望当结论写进 claim"
+  ],
+  "attempts": [
+   {
+    "method": "凭印象给每条 claim 写来源",
+    "result": "fail",
+    "note": "机械质检报 claim_no_source / evidence_not_found，high 未清零不许进评分"
+   },
+   {
+    "method": "每条 claim 配 evidence_id（真实存在于证据层）与具体页码/图表编号",
+    "result": "success",
+    "note": "内容准确与可追溯这一维（权重最高）有了可核对的依据"
+   }
+  ],
+  "final_recipe": "实质页每条 claim 三字段缺一不可：claim（本页一个可被质疑的主张）、evidence_id（必须真实存在于证据层）、source（论文具体页码/图表编号）——source 只写'该论文'或作者姓氏一律按缺失处理；evidence_id 查不到时改 id，不许改证据文件去凑",
+  "positive_lessons": [],
+  "negative_lessons": [
+   "没有出处的主张等于编的——这是闸门与评分者都会拦的硬项"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §1.5 claims（证据层入口）",
+    "scripts/report_qa.py check_plan 证据链检查",
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §8 证据层红线"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "76be52e2e4050b63",
+  "created_at": "2026-09-23T16:12:37+00:00",
+  "updated_at": "2026-09-23T16:12:37+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "bf356989b2f544cda1df258cdac58ad6",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-23T16-12-37+00-00-bf356989.md"
+ },
+ "7c3685e954e04669ad3691d36164f9cc": {
+  "id": "7c3685e954e04669ad3691d36164f9cc",
+  "report_type": "single",
+  "tags": [
+   "图文不符",
+   "图表错配"
+  ],
+  "stage": "R3",
+  "kind": "visual",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [
+   "method",
+   "data",
+   "result",
+   "compare"
+  ],
+  "applicable_when": "要在页面上放图或表格、正在给页面选 role 时",
+  "pitfalls": [
+   "把结果图放在 result 页——完全不渲染，页面退化成纯文字页",
+   "把表格放在 method/result 页——同样不渲染",
+   "机械质检全绿，但页面上少了一张图，只能靠评分者发现",
+   "image 声明的文件不存在，静默退化为纯文字页"
+  ],
+  "attempts": [
+   {
+    "method": "按内容语义选 role，图片随手放在结果页",
+    "result": "fail",
+    "note": "image 只认 method/data，图静默消失且机械质检不报错"
+   },
+   {
+    "method": "要放图就把该页 role 写成 data（或 method），要放表/分栏就写成 compare；image + bullets 的双栏正是 data 页的默认版式",
+    "result": "success",
+    "note": "图与表都真的渲染出来，版式维度不再被扣"
+   }
+  ],
+  "final_recipe": "结构元素只认特定 role：image 只认 method/data，table 与 columns 只认 compare，subtitle 只认 cover/thanks；写错位置不报错、只是不出现——要放结果图就把该页 role 改成 data，要放表就用 compare；同时确认 image.path 真的在盘上（相对路径按 项目根 → 文献目录 → 叙事目录 依次解析），找不到会静默退化成纯文字页",
+  "positive_lessons": [
+   "选 role 之前先确认这一页要放的结构元素在哪几个 role 上生效"
+  ],
+  "negative_lessons": [
+   "不要用'机械质检全绿'当作页面完整的证据——元素写错 role 时质检不会报"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §1.4 / §1.6 版式元素与 role 的绑定 / §8 元素写错 role 被静默丢弃"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "adadd96669ccd3f4",
+  "created_at": "2026-09-23T16:12:37+00:00",
+  "updated_at": "2026-09-23T16:12:37+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "7c3685e954e04669ad3691d36164f9cc",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-23T16-12-37+00-00-7c3685e9.md"
+ },
+ "24e239dc02ac4a1b8b0df4f4b37cb2c5": {
+  "id": "24e239dc02ac4a1b8b0df4f4b37cb2c5",
+  "report_type": "multi",
+  "tags": [
+   "字号过小",
+   "文字溢出"
+  ],
+  "stage": "R3",
+  "kind": "visual",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "zh",
+  "page_roles": [
+   "compare",
+   "result"
+  ],
+  "applicable_when": "中文 deck 单页内容偏多、渲染后出现贴边或字号被压到下限时",
+  "pitfalls": [
+   "靠缩字硬塞：一页三百字，字号一路降到地板",
+   "导语段写长了，顶掉列表的空间（正文预算把导语算在内）",
+   "以为渲染器会自动排版"
+  ],
+  "attempts": [
+   {
+    "method": "把字号从规划值一路降到下限硬塞进一页",
+    "result": "fail",
+    "note": "同时撞上 font_too_small 与 content_touches_edge 两条机械规则"
+   },
+   {
+    "method": "先删到只保留支撑本页主张的内容，删不动就拆页",
+    "result": "success",
+    "note": "字号回到规划值，两条违规一起消失"
+   }
+  ],
+  "final_recipe": "一页放不下时先删字、再拆页，不要缩字号：渲染器只做估算级自适应，到下限仍放不下也照样输出，溢出由机械质检报出来而不是被静默压扁；正文预算包含导语段（列表字数之和 + 导语字数），导语写长了一样挤掉列表空间；列表超过 6 条通常意味着分类没做",
+  "positive_lessons": [
+   "字号变小的信号是'内容太多'，不是'字号该调'"
+  ],
+  "negative_lessons": [
+   "不要把渲染器的容忍额（字号下限再减 4pt）当成可用排版空间"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "scripts/report_qa.py BUDGET / char_budget / font_too_small / content_touches_edge",
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §3 第 1/3 条 / §8 靠缩字硬塞"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "a56d1d96fbf9af3b",
+  "created_at": "2026-09-23T16:12:37+00:00",
+  "updated_at": "2026-09-23T16:12:37+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "24e239dc02ac4a1b8b0df4f4b37cb2c5",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\multi\\2026-09-23T16-12-37+00-00-24e239dc.md"
+ },
+ "2944046864eb4892999e0ef549b5428e": {
+  "id": "2944046864eb4892999e0ef549b5428e",
+  "report_type": "survey",
+  "tags": [
+   "字体回退",
+   "字体缺失"
+  ],
+  "stage": "R3",
+  "kind": "visual",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "zh",
+  "page_roles": [
+   "cover"
+  ],
+  "applicable_when": "换 theme.font_zh / font_en，或这份 deck 要在另一台机器上渲染时",
+  "pitfalls": [
+   "换了目标机器上没装的字体，渲染端静默回退、版式明显跳变",
+   "中文显示成方框就去'手动加字体'，其实成因是中文字体未装",
+   "只写 latin 字体名，中文走渲染端默认字体"
+  ],
+  "attempts": [
+   {
+    "method": "为了好看把 font_zh 换成某个设计字体",
+    "result": "fail",
+    "note": "目标机器没装，报 high font_missing，字形与行宽全变"
+   },
+   {
+    "method": "换字体前先确认目标机器已装；默认用系统自带的中文/西文字体",
+    "result": "success",
+    "note": "渲染结果与规划一致，不会临场跳版"
+   }
+  ],
+  "final_recipe": "theme 里的中西文字体必须是**渲染机器上真实安装**的字体（默认用系统自带的那对）；换字体前先确认已装，未装即报 high font_missing 且渲染端不报错、只静默回退；中文字形由东亚字形属性承载，脚本已同时写 latin / 东亚 / 复杂文种三处，方框问题的唯一成因就是中文字体未装——改字体名，不要手动加字体",
+  "positive_lessons": [],
+  "negative_lessons": [
+   "字体是渲染环境事实，不是审美选择——换机器渲染前先核一遍"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §4.2 / §8 字体回退·中文乱码",
+    "scripts/report_pptx.py THEMES / _set_font",
+    "scripts/report_qa.py font_available / font_missing"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "db2827af8033a030",
+  "created_at": "2026-09-23T16:12:37+00:00",
+  "updated_at": "2026-09-23T16:12:37+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "2944046864eb4892999e0ef549b5428e",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\survey\\2026-09-23T16-12-37+00-00-29440468.md"
+ },
+ "9d0c17a5048849c8a5714c3a7fe4fc96": {
+  "id": "9d0c17a5048849c8a5714c3a7fe4fc96",
+  "report_type": "single",
+  "tags": [
+   "自评通胀"
+  ],
+  "stage": "R5",
+  "kind": "review",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "起评分者之前，尤其执笔者本人已深度参与改稿、看不见自己的默认假设时",
+  "pitfalls": [
+   "生成者给自己打分，各维度普遍高分而问题清单全是 low",
+   "评分者拿到改稿过程与取舍理由，会自动替 PPT 补上它其实没写出来的前提",
+   "评分者被允许读经验库，等于把生成者的先验注进判据"
+  ],
+  "attempts": [
+   {
+    "method": "同一条对话里'我再审一遍'",
+    "result": "fail",
+    "note": "自评通胀，分数不可信，也无法与产物指纹绑定"
+   },
+   {
+    "method": "起独立子会话评分：只给渲染图、渲染指纹与 dpi、论文原文与抽取结果、rubric 与定盘信息，不给对话历史与自评、不给经验库工具、不给产物写权限",
+    "result": "success",
+    "note": "评分者只对产物负责，独立评分成立"
+   }
+  ],
+  "final_recipe": "评分者必须是独立子会话，且有明确的给/不给清单：给渲染图、渲染指纹与 dpi、论文原文与抽取/证据文件、rubric 与定盘信息；不给生成过程的对话历史与取舍理由、不给生成者自评、不给经验库工具（读经验库等于把生成者先验注进评分者）、不给任何产物写权限；评分结论里的评分者会话 id 必须不同于生成者会话 id",
+  "positive_lessons": [
+   "同一模型族也能显著改变结论分布，因为它看不到执笔者的默认假设"
+  ],
+  "negative_lessons": [
+   "不要让评分者读经验库，那会破坏独立评分的成立条件"
+  ],
+  "tools_used": [
+   "subagent"
+  ],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-review/SKILL.md §0.1 / §0.2 / §0.3 指纹纪律",
+    "dsh/packages/bobo/plugins/report-gate.mjs 评分者身份判据",
+    "dsh/.agents/skills/report-experience/SKILL.md 评分者不许读经验库"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "67c26c1a12ebe28c",
+  "created_at": "2026-09-23T16:12:38+00:00",
+  "updated_at": "2026-09-23T16:12:38+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "9d0c17a5048849c8a5714c3a7fe4fc96",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-23T16-12-38+00-00-9d0c17a5.md"
+ },
+ "b2b51bb29ceb4ecdaee50728371fa6ec": {
+  "id": "b2b51bb29ceb4ecdaee50728371fa6ec",
+  "report_type": "multi",
+  "tags": [
+   "扣分无依据"
+  ],
+  "stage": "R5",
+  "kind": "review",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "给评审问题定严重度、判断交付闸门能不能放行时",
+  "pitfalls": [
+   "把 high 降级成 medium 来绕闸门",
+   "严重度按'感觉有多严重'定",
+   "逐页扣分项只写扣了几分，不写具体观察"
+  ],
+  "attempts": [
+   {
+    "method": "把不服气但确实致命的问题标成 medium",
+    "result": "fail",
+    "note": "闸门只拦 high，降级只是把问题推给汇报现场"
+   },
+   {
+    "method": "按'不改会不会让结论站不住、会不会在现场被问倒'定级；降级必须同时改写问题描述并写明理由",
+    "result": "success",
+    "note": "high 一律返修或明确记录不改的理由，问题不会静默消失"
+   }
+  ],
+  "final_recipe": "严重度判据是「不改会不会结论站不住 / 学术诚信问题 / 公开场合会被直接质疑」，不是感觉；high 必须了结——要么已改，要么明确记录为什么不改并写清理由；逐页扣分项要配具体观察（含页号与实测值），只扣分不写具体项的评价没有返修价值",
+  "positive_lessons": [],
+  "negative_lessons": [
+   "不要用降级绕过闸门——降级不等于问题消失，只是把它推给现场"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-review/SKILL.md §3.2 严重度锚点 / §1 per_slide / §5 降级绕过",
+    "dsh/packages/bobo/plugins/report-gate.mjs deliveryAllowed 未了结 high"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "55225c8857394e8b",
+  "created_at": "2026-09-23T16:12:38+00:00",
+  "updated_at": "2026-09-23T16:12:38+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "b2b51bb29ceb4ecdaee50728371fa6ec",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\multi\\2026-09-23T16-12-38+00-00-b2b51bb2.md"
+ },
+ "36fc9e8700f74ae1b98e02a20462b858": {
+  "id": "36fc9e8700f74ae1b98e02a20462b858",
+  "report_type": "multi",
+  "tags": [
+   "分数不单调",
+   "返修改坏"
+  ],
+  "stage": "R5",
+  "kind": "review",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "返修过程中出现'改 A 坏 B'、本轮分数低于上一轮时",
+  "pitfalls": [
+   "默认交付末轮那一版，哪怕它分数更低",
+   "只还原 plan 再重渲染，评分记录里的 pptx 指纹对不上",
+   "每轮评分后不留档，最高分版本再也复现不出来"
+  ],
+  "attempts": [
+   {
+    "method": "为了压单页字数而拆页，结果把叙事打散，末轮分数反而掉了",
+    "result": "fail",
+    "note": "直接交付末轮等于交了一份更差的 PPT"
+   },
+   {
+    "method": "每轮评分后把 plan 留档为 slide-plan.round-N.json，交付时整套还原（plan + pptx + preview + render-manifest + score）",
+    "result": "success",
+    "note": "取回最高分版本，且指纹链自洽"
+   }
+  ],
+  "final_recipe": "交付取分数最高的那一版，不是末轮那版；取回必须**整套还原**（slide-plan + deck.pptx + preview/ + render-manifest + score），因为 pptx 字节哈希与渲染时刻绑定——只还原 plan 再重渲染，评分记录里的指纹就对不上；每轮评分后留档 plan 并记下该轮指纹，回滚原因写进返修记账",
+  "positive_lessons": [
+   "分数不单调是返修常态，落盘留档是唯一能取回好版本的办法"
+  ],
+  "negative_lessons": [
+   "没留档就如实说'最高分版本已不可复现，交付的是当前版本'，不要伪造一份评分"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-review/SKILL.md §4.2 分数不单调",
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §7 渲染与指纹"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "ca18eca4e3c653b8",
+  "created_at": "2026-09-23T16:12:38+00:00",
+  "updated_at": "2026-09-23T16:12:38+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "36fc9e8700f74ae1b98e02a20462b858",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\multi\\2026-09-23T16-12-38+00-00-36fc9e87.md"
+ },
+ "05a21597cdf047379c4762e10222abef": {
+  "id": "05a21597cdf047379c4762e10222abef",
+  "report_type": "single",
+  "tags": [
+   "无效返修",
+   "轮数超限"
+  ],
+  "stage": "R5",
+  "kind": "process",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "返修已进行两轮以上、分数提升明显趋缓时",
+  "pitfalls": [
+   "无界循环，每轮都在烧预算而分数不动",
+   "连续两轮问题清单一样、plan 没有实质变化还继续跑",
+   "只改评审文件的措辞就算返修"
+  ],
+  "attempts": [
+   {
+    "method": "一轮轮继续修，不设停止条件",
+    "result": "fail",
+    "note": "轮次与分数都不收敛，预算耗尽仍拿不到可交付版本"
+   },
+   {
+    "method": "设停止条件：总分达标且无未了结 high，或轮数达上限，或连续两轮提升过小",
+    "result": "success",
+    "note": "触顶时带已知缺口交付，并显式列出未闭合项"
+   }
+  ],
+  "final_recipe": "返修停止条件三选一：总分达阈值且无未了结 high；轮数达上限（默认 3 轮）；连续两轮提升小于 3 分（继续跑只是烧预算）。触顶不要无界循环——带已知缺口交付，把未闭合项单列一节并在给用户的最终说明里显式列出；本轮必须实际改动 plan 或产物，只改评审文件措辞不算返修",
+  "positive_lessons": [
+   "带着已知缺口交付比'再跑一轮'更诚实也更省钱"
+  ],
+  "negative_lessons": [
+   "只改评审文件措辞不算返修——闸门看的是产物"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-review/SKILL.md §4.1 停止条件 / §5 空转返修",
+    "dsh/packages/bobo/plugins/report-gate.mjs maxRounds 3",
+    "dsh/packages/bobo/plugins/report-gate.mjs 未了结 high 时不许收尾"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "e11b74995fe88505",
+  "created_at": "2026-09-23T16:12:38+00:00",
+  "updated_at": "2026-09-23T16:12:38+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "05a21597cdf047379c4762e10222abef",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-23T16-12-38+00-00-05a21597.md"
+ },
+ "b07def7ed21944e5b34df0d1a5b84122": {
+  "id": "b07def7ed21944e5b34df0d1a5b84122",
+  "report_type": "multi",
+  "tags": [
+   "产物未落盘",
+   "未渲染即评分"
+  ],
+  "stage": "R4",
+  "kind": "process",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "判断汇报流程能否进入下一阶段、以及能否起评分者时",
+  "pitfalls": [
+   "用'我已经写完 plan 了'这类口头声明代替产物落盘",
+   "机械 high 没清零就起评分者，白烧一轮评分",
+   "用跳过渲染产生的产物直接进入评分"
+  ],
+  "attempts": [
+   {
+    "method": "按对话里的完成声明推进阶段",
+    "result": "fail",
+    "note": "声明与产物脱节，后面的评分与交付全部返工"
+   },
+   {
+    "method": "只按盘上产物判断阶段完成：plan 存在且过了机械关、pptx 由脚本渲染、预览图与渲染清单齐全，才起评分者",
+    "result": "success",
+    "note": "每一轮评分的依据都能追到盘上的产物"
+   }
+  ],
+  "final_recipe": "阶段闸门只看盘上产物，不看任何口头声明；每轮返修先跑机械质检把 high 清零，再起评分者——让评分者去看一份有 high 违规的产物是纯浪费；R4 的产物必须由脚本渲染产出，手写 pptx / 预览图 / 质检报告 / 渲染清单都会被闸门拦下（手写 pptx 等于绕开 plan，整套设计随之失效）",
+  "positive_lessons": [
+   "阶段完成的定义是'产物在盘上'，不是'我说我做完了'"
+  ],
+  "negative_lessons": [
+   "不要用完成声明推进阶段，也不要用跳过渲染的产物进入评分"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/plugins/report-gate.mjs 阶段判据 / 手写机器产物拦截",
+    "dsh/packages/bobo/presets/report/skills/report-review/SKILL.md §4 第 1 步：先过机械关",
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §5 脚本调用与产物"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "bd274ffc01ae34ef",
+  "created_at": "2026-09-23T16:12:38+00:00",
+  "updated_at": "2026-09-23T16:12:38+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "b07def7ed21944e5b34df0d1a5b84122",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\multi\\2026-09-23T16-12-38+00-00-b07def7e.md"
+ },
+ "242b3385c96a4030ad7f28e1249261d6": {
+  "id": "242b3385c96a4030ad7f28e1249261d6",
+  "report_type": "survey",
+  "tags": [
+   "页数超限",
+   "超时"
+  ],
+  "stage": "R2",
+  "kind": "process",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "汇报时长已定、正在规划页数与每页内容量时",
+  "pitfalls": [
+   "页数先按材料多少定，最后才发现讲不完",
+   "时长改了却不动页数，只把讲稿拉长",
+   "每页信息量雷同，结果页与背景页一样厚"
+  ],
+  "attempts": [
+   {
+    "method": "按材料多少排页，讲的时候加快语速",
+    "result": "fail",
+    "note": "每页不足 0.35 分钟，实际就是念不完，机械质检也报 pacing_fast"
+   },
+   {
+    "method": "先按时长算出页数区间，再按页角色分配时间预算，讲稿长度按时间预算反推",
+    "result": "success",
+    "note": "页数、时间预算与讲稿长度三者自洽"
+   }
+  ],
+  "final_recipe": "页数必须落在「时长 / 1.6 ≤ 页数 ≤ 时长 / 0.35」区间内，基准按 1 页/分钟；分钟数一变先改页数、再改每页内容量；逐页口播秒数之和约为 时长 × 60 × 0.9（留 10% 缓冲给提问与自然损耗）；讲稿长度按该页口播秒数反推（每 10 秒约 40–50 字），超出页时间预算的讲稿就是超时",
+  "positive_lessons": [
+   "超时的解法是先减页，不是加快语速或拉长讲稿填时间"
+  ],
+  "negative_lessons": [
+   "页数超限时不要动汇报时长——时长是用户的输入，不是可以调的变量"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §4.1 / §4.2 / §4.3",
+    "scripts/report_qa.py pacing_fast / pacing_slow"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "8d9e143982a45ed1",
+  "created_at": "2026-09-23T16:12:38+00:00",
+  "updated_at": "2026-09-23T16:12:38+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "242b3385c96a4030ad7f28e1249261d6",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\survey\\2026-09-23T16-12-38+00-00-242b3385.md"
+ },
+ "bbf3099a0142408bac6a408079f9c4e5": {
+  "id": "bbf3099a0142408bac6a408079f9c4e5",
+  "report_type": "seminar",
+  "tags": [
+   "漏检索"
+  ],
+  "stage": "R0",
+  "kind": "process",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "R0 定盘时，尤其用户只说了'讲几篇文献'而没说场合、时长与受众时",
+  "pitfalls": [
+   "先动手排页序，讲完才发现场合不对（组会 vs 开题）",
+   "汇报类型与语言/时长没有落盘，后面全靠对话记忆",
+   "R0 没有检索经验库，重蹈同一类坑"
+  ],
+  "attempts": [
+   {
+    "method": "从论文内容直接开始排页",
+    "result": "fail",
+    "note": "类型走错，整份页序都要重排，返工代价最大"
+   },
+   {
+    "method": "R0 先确认并落盘汇报类型 / 语言 / 时长 / 受众，再检索一次经验库（叙事骨架与页数取舍）",
+    "result": "success",
+    "note": "页序模板与评分权重都有前提，后续阶段不必返工"
+   }
+  ],
+  "final_recipe": "R0 就把汇报类型（单篇/多篇/组会/开题/综述）、语言、时长与受众确认并落盘——五类汇报的页序模板、强制页与评分权重都不同，走错类型整份页序都要重排；定盘后检索一次经验库（叙事骨架与页数取舍）；R3 页策划前再检索一次（版式与视觉）；R4 生成阶段不要检索——会诱导把经验写进页面正文",
+  "positive_lessons": [],
+  "negative_lessons": [
+   "不要用对话记忆代替落盘：闸门只看产物，不看口头声明"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §0 五类汇报先路由 / §9 经验库接口",
+    "dsh/packages/bobo/plugins/report-gate.mjs 阶段判据 R0",
+    "dsh/.agents/skills/report-experience/SKILL.md §何时查（三个检索点）"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "fa487d9327e46c8f",
+  "created_at": "2026-09-23T16:12:39+00:00",
+  "updated_at": "2026-09-23T16:12:39+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "bbf3099a0142408bac6a408079f9c4e5",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\seminar\\2026-09-23T16-12-39+00-00-bbf3099a.md"
+ },
+ "0b5d7d5faaed4e9a9b778193974394dd": {
+  "id": "0b5d7d5faaed4e9a9b778193974394dd",
+  "report_type": "multi",
+  "tags": [
+   "漏沉淀"
+  ],
+  "stage": "R6",
+  "kind": "process",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "汇报收尾（每轮评分返修后与交付前）准备沉淀经验时",
+  "pitfalls": [
+   "只沉淀成功经验，失败的那两轮记不住",
+   "靠回忆写经验，不跑候选草稿脚本",
+   "参考过历史经验却不记参考了哪条、也不回采纳结果"
+  ],
+  "attempts": [
+   {
+    "method": "交付完凭回忆写几条经验",
+    "result": "fail",
+    "note": "最值钱的失败线索（连改两轮上不去分）全丢了"
+   },
+   {
+    "method": "从结构化产物机械提取候选草稿（逐页扣分项、'不改'条目、轮次分数、阶段耗时），再逐条过迁移判据",
+    "result": "success",
+    "note": "成功/失败/部分成功都沉淀，来源可审计"
+   }
+  ],
+  "final_recipe": "沉淀点在每轮评分返修后与交付前，两处都要做；成功、失败、部分成功**都要沉淀**——失败经验（这个叙事结构连改两轮都上不去分）价值最高；原料用结构化产物（逐页扣分项、'不改'条目、轮次分数、阶段耗时），不靠回忆；记录参考过哪几条历史经验并回报采纳结果；只沉淀「怎么讲」的方法与坑，不沉淀论文的研究结论与数值",
+  "positive_lessons": [
+   "库的因果链是'制作动作 → 评分后果'，所以最有价值的写法是'我做了 X，评分因此掉了'"
+  ],
+  "negative_lessons": [
+   "不要只记成功经验——失败那条才是最值钱的"
+  ],
+  "tools_used": [
+   "report_experience_candidates.py"
+  ],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/.agents/skills/report-experience/SKILL.md §何时存 / 置信度锚点 / 红线 2",
+    "dsh/packages/bobo/presets/report/skills/report-review/SKILL.md §6 经验回流",
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §5 候选草稿脚本"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "55cd89300737610f",
+  "created_at": "2026-09-23T16:12:39+00:00",
+  "updated_at": "2026-09-23T16:12:39+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "0b5d7d5faaed4e9a9b778193974394dd",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\multi\\2026-09-23T16-12-39+00-00-0b5d7d5f.md"
+ },
+ "6962d8e8a9e1444d87ff581efd7bc92b": {
+  "id": "6962d8e8a9e1444d87ff581efd7bc92b",
+  "report_type": "single",
+  "tags": [
+   "manifest 指纹不符"
+  ],
+  "stage": "R4",
+  "kind": "pipeline",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "生成与返修期间，任何想改动页面的时刻",
+  "pitfalls": [
+   "渲染后在 PowerPoint 里手工挪两下再保存",
+   "改完 pptx 不重渲染，评分依据与交付物脱钩",
+   "用旧的 pptx 配新的 plan 跑质检"
+  ],
+  "attempts": [
+   {
+    "method": "渲染后在 PowerPoint 里手工微调交付的 pptx",
+    "result": "fail",
+    "note": "pptx 字节哈希变了，渲染清单与评分记录的指纹全部对不上，本轮评分作废"
+   },
+   {
+    "method": "一切改动回到 deck plan，再依次重跑渲染与质检脚本",
+    "result": "success",
+    "note": "plan → pptx → 预览图 → 渲染清单 → 评分 整条链自洽"
+   }
+  ],
+  "final_recipe": "deck plan 是唯一真相：页面文字、图表引用、讲稿备注全部来自它，要改页面就改 plan 再重跑渲染脚本；不要直接改 pptx——质检记录的是渲染时刻的 pptx 哈希，改完不重渲染指纹就对不上，本轮评分立即作废；正确顺序是 改 plan → 重跑渲染 → 重跑质检 → 重新评分；同一份 plan 在相隔两秒以上的两次渲染会得到不同字节（内容相同、哈希不同），所以回滚必须整套还原",
+  "positive_lessons": [],
+  "negative_lessons": [
+   "回滚到最高分那版必须整套还原（plan/pptx/预览/清单/评分），只还原 plan 没用"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §0 plan 是唯一真相 / §7 渲染与指纹",
+    "scripts/report_pptx.py 设计原则",
+    "scripts/report_qa.py 为什么要指纹"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "4f5730cdc75658a6",
+  "created_at": "2026-09-23T16:12:39+00:00",
+  "updated_at": "2026-09-23T16:12:39+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "6962d8e8a9e1444d87ff581efd7bc92b",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-23T16-12-39+00-00-6962d8e8.md"
+ },
+ "7322c6a119b049d9936ead71458b922b": {
+  "id": "7322c6a119b049d9936ead71458b922b",
+  "report_type": "multi",
+  "tags": [
+   "COM 渲染失败",
+   "未渲染即评分"
+  ],
+  "stage": "R4",
+  "kind": "pipeline",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "质检报渲染失败时（缺 PowerPoint、渲染库不可用、导出文件为空、pptx 被占用）",
+  "pitfalls": [
+   "用跳过渲染的参数继续往下走",
+   "把渲染失败当成'某个检查项没过'去改 plan",
+   "渲染完立刻重渲染，撞上 PowerPoint 进程还没退干净的文件占用"
+  ],
+  "attempts": [
+   {
+    "method": "渲染报错后跳过渲染继续评分",
+    "result": "fail",
+    "note": "报 high render_skipped，闸门拒绝放行——没渲染就评分等于凭空打分"
+   },
+   {
+    "method": "修渲染环境（装 PowerPoint、装渲染库、确认预览目录可写、确认没有别的进程占用 pptx）后重跑",
+    "result": "success",
+    "note": "渲染成功才继续，页面实际观感与缺图都能被看到"
+   }
+  ],
+  "final_recipe": "渲染失败的正确动作是修环境，不是绕开渲染；跳过渲染的参数只用于排障，它会产生 high 违规并让闸门拒绝放行；渲染走桌面套件原生导出，不可用时脚本不假装成功，而是把'未渲染'升级成 high；导出后要等一个短窗口让桌面套件释放文件句柄，否则紧接着重渲染会撞上占用",
+  "positive_lessons": [
+   "渲染是评分的物理前提——评分者看到的必须是页面实际长什么样"
+  ],
+  "negative_lessons": [
+   "不要用'没渲染就评分'换时间：评分者看不到页面就没有版式维度"
+  ],
+  "tools_used": [
+   "PowerPoint COM"
+  ],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "scripts/report_qa.py render_powerpoint / render_skipped / render_failed / render_count_mismatch",
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §5 / §6.1 / §8 COM 渲染失败"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "3951c98a0991e9a9",
+  "created_at": "2026-09-23T16:12:39+00:00",
+  "updated_at": "2026-09-23T16:12:39+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "7322c6a119b049d9936ead71458b922b",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\multi\\2026-09-23T16-12-39+00-00-7322c6a1.md"
+ },
+ "7367f2b7597f438c8c8dafd7f5f1109d": {
+  "id": "7367f2b7597f438c8c8dafd7f5f1109d",
+  "report_type": "proposal",
+  "tags": [
+   "产物未落盘"
+  ],
+  "stage": "R6",
+  "kind": "pipeline",
+  "result": "FAIL",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "",
+  "page_roles": [],
+  "applicable_when": "生成交付说明与整理交付目录时",
+  "pitfalls": [
+   "手写交付说明或讲稿文件——闸门会拦",
+   "把经验 id 写进页面正文或讲稿",
+   "交付说明的字段缺失，评分信息在交付文档里显示成占位符"
+  ],
+  "attempts": [
+   {
+    "method": "按记忆手写一份交付说明",
+    "result": "fail",
+    "note": "手写机器产物会被闸门拒绝，且与评分记录的字段容易不一致"
+   },
+   {
+    "method": "用脚本生成交付说明，字段机械读取评分记录；经验 id 只留在定盘记录与返修记账的『参考经验』字段",
+    "result": "success",
+    "note": "交付物与评分记录一致，经验也没有渗进对论文的陈述"
+   }
+  ],
+  "final_recipe": "交付物一律由脚本产出（pptx 与讲稿、预览图、质检报告、渲染清单、交付说明），手写会被闸门拦下；交付说明机械读取评分记录，字段缺失会显示成占位符，所以先把评审文件写全再交付；经验 id 只允许出现在定盘记录与返修记账的『参考经验』字段，不许进页面正文、讲稿与交付说明",
+  "positive_lessons": [
+   "交付说明由脚本从评审文件生成，比手写更省事也更不容易自相矛盾"
+  ],
+  "negative_lessons": [
+   "经验只能改变流程与检查表，不能改变对论文的陈述"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": null,
+   "artifacts": [
+    "dsh/packages/bobo/presets/report/skills/report-slides/SKILL.md §5 脚本调用与产物",
+    "dsh/packages/bobo/presets/report/skills/report-narrative/SKILL.md §9 纪律 2（经验不得进交付物）",
+    "dsh/.agents/skills/report-experience/SKILL.md 红线 5",
+    "dsh/packages/bobo/plugins/report-gate.mjs 手写机器产物拦截"
+   ],
+   "seed": true,
+   "note": "技能种子：非真实汇报项目 earned 经验，confirmed_projects 恒为 0"
+  },
+  "feature_hash": "e0ae3c4a12dd5274",
+  "created_at": "2026-09-23T16:12:39+00:00",
+  "updated_at": "2026-09-23T16:12:39+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "7367f2b7597f438c8c8dafd7f5f1109d",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\proposal\\2026-09-23T16-12-39+00-00-7367f2b7.md"
+ },
+ "de8bde5bd30c4fec977cad74246ed00c": {
+  "id": "de8bde5bd30c4fec977cad74246ed00c",
+  "report_type": "single",
+  "tags": [
+   "样本量归属",
+   "口径混淆",
+   "数字回溯"
+  ],
+  "stage": "R1",
+  "kind": "content",
+  "result": "SUCCESS",
+  "confidence": 3.0,
+  "confirmed_projects": 0,
+  "language": "zh",
+  "page_roles": [
+   "data"
+  ],
+  "applicable_when": "论文在同一节或相邻节里给出多个筛选步骤（先剔网格、再筛出行量），而正文只报一个总数时",
+  "pitfalls": [
+   "看到「筛选出行量大于 12」就顺手把样本量 1 410 归给这一步，而 1 410 其实来自更早的「剔除无 POI 网格」"
+  ],
+  "attempts": [
+   {
+    "method": "从筛选条件反推数字归属",
+    "result": "fail",
+    "note": "两个筛选步骤都在讲「剩余网格」，凭条件推断必然错"
+   },
+   {
+    "method": "对每个要上页面的总数，grep 原文找到首次出现的句子",
+    "result": "success",
+    "note": "1 410 首次出现在网格划分一节，与出行量筛选无关"
+   }
+  ],
+  "final_recipe": "页面上的每个总数都要回到原文找到它**首次被定义**的那一句，把出处写到该句所在的页；不要从筛选条件推断归属。",
+  "positive_lessons": [
+   "把数字出处写到「首次定义处」而不是「最后一次使用处」，可避免这类归属错误"
+  ],
+  "negative_lessons": [
+   "不要由一个筛选条件推断某个总数属于它——论文里的筛选经常是链式多步的"
+  ],
+  "tools_used": [
+   "pdfplumber"
+  ],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": "bike-built-env-report",
+   "artifacts": [
+    "04-评审/score.json",
+    "04-评审/issues.jsonl",
+    "04-评审/score-history.jsonl"
+   ],
+   "seed": false,
+   "note": ""
+  },
+  "feature_hash": "61fe0aeecf7127ad",
+  "created_at": "2026-09-24T01:06:52+00:00",
+  "updated_at": "2026-09-24T01:06:52+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "de8bde5bd30c4fec977cad74246ed00c",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-24T01-06-52+00-00-de8bde5b.md"
+ },
+ "8837b27206304c59a299256c38d2df1a": {
+  "id": "8837b27206304c59a299256c38d2df1a",
+  "report_type": "single",
+  "tags": [
+   "原图截取",
+   "底纹残留",
+   "裁图残影"
+  ],
+  "stage": "R3",
+  "kind": "visual",
+  "result": "SUCCESS",
+  "confidence": 2.5,
+  "confirmed_projects": 0,
+  "language": "zh",
+  "page_roles": [
+   "method",
+   "result"
+  ],
+  "applicable_when": "把论文 PDF 里的插图截出来放进 PPT 时（尤其是网络首发版/预印本，页面带底纹或水印）",
+  "pitfalls": [
+   "按图片 bbox 直接裁剪，会把上一行的正文标题与下一行的图号说明一起带进来，投影上是压在图上的一条残影"
+  ],
+  "attempts": [
+   {
+    "method": "bbox + 上留白 7pt / 下留白 +5pt",
+    "result": "fail",
+    "note": "上留白不足，正文标题行仍被带进图里"
+   },
+   {
+    "method": "上留白 18pt + 下留白 −4pt",
+    "result": "success",
+    "note": "上切正文标题行、下切图号说明行，两处都干净；两幅图都验证过"
+   },
+   {
+    "method": "页面底纹（淡绿）按颜色阈值涂白",
+    "result": "success",
+    "note": "判据 G>R+18 且 G>B+18 且 G>170，只命中底纹，图例五档与 A–H 标注原样保留"
+   }
+  ],
+  "final_recipe": "截论文插图固定用「上留白切正文行、下留白切图号行」双向收紧；页面底纹残留在图注里注明「已清除底纹、图内容未改动」，不要把底纹当成图的一部分。",
+  "positive_lessons": [
+   "裁完自己按原始分辨率读一遍图，残影只有放大才看得出来"
+  ],
+  "negative_lessons": [
+   "不要在降采样的缩略图上判断裁图是否干净——残影会在缩略图里消失，然后在投影上出现"
+  ],
+  "tools_used": [
+   "pdfplumber",
+   "Pillow"
+  ],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": "bike-built-env-report",
+   "artifacts": [
+    "04-评审/score.json",
+    "04-评审/issues.jsonl",
+    "04-评审/score-history.jsonl"
+   ],
+   "seed": false,
+   "note": ""
+  },
+  "feature_hash": "db5800c2ef1a4172",
+  "created_at": "2026-09-24T01:06:57+00:00",
+  "updated_at": "2026-09-24T01:06:57+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "8837b27206304c59a299256c38d2df1a",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-24T01-06-57+00-00-8837b272.md"
+ },
+ "e05ab376a88e4389989295ea6dc1a432": {
+  "id": "e05ab376a88e4389989295ea6dc1a432",
+  "report_type": "single",
+  "tags": [
+   "自造规则",
+   "符号方向",
+   "过度概括"
+  ],
+  "stage": "R3",
+  "kind": "content",
+  "result": "FAIL",
+  "confidence": 2.5,
+  "confirmed_projects": 0,
+  "language": "zh",
+  "page_roles": [
+   "result"
+  ],
+  "applicable_when": "为解决「表格数字没有口径」而给表格补脚注、尤其是要解释回归系数正负号含义时",
+  "pitfalls": [
+   "为了让听众看懂，自己推出了一条统一的「负系数＝变量越大吸引力越强」规则；而论文对某个变量的文字解释与该规则方向相反，等于把论文自身的不自洽放大到页面上"
+  ],
+  "attempts": [
+   {
+    "method": "由「势能越低越吸引」推出统一的符号解释规则",
+    "result": "fail",
+    "note": "论文对「到商圈中心距离」用的是「距离越近吸引作用越强」，与统一规则方向相反"
+   },
+   {
+    "method": "只写口径（标准化、Ps 定义），方向逐条指向论文原文",
+    "result": "success",
+    "note": "并把「需要现场对齐」写成讲稿的备答，风险从「会被问倒」变成「主动交代」"
+   }
+  ],
+  "final_recipe": "表格脚注只写**可机械核验的口径**（是否标准化、指标定义、显著单元占比的含义）；系数方向的解释一律引论文原文并标明页码，不要自造统一规则。",
+  "positive_lessons": [
+   "把「需要现场对齐的地方」写进讲稿当备答，比藏起来更安全"
+  ],
+  "negative_lessons": [
+   "为听众「补一条好懂的规则」是高风险动作——论文自身常常不自洽，规则会替它扩音"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": "bike-built-env-report",
+   "artifacts": [
+    "04-评审/score.json",
+    "04-评审/issues.jsonl",
+    "04-评审/score-history.jsonl"
+   ],
+   "seed": false,
+   "note": ""
+  },
+  "feature_hash": "0546ddeea4d9d52b",
+  "created_at": "2026-09-24T01:06:57+00:00",
+  "updated_at": "2026-09-24T01:06:57+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "e05ab376a88e4389989295ea6dc1a432",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-24T01-06-57+00-00-e05ab376.md"
+ },
+ "e24fc2830d72469cae5cc4b067bbf667": {
+  "id": "e24fc2830d72469cae5cc4b067bbf667",
+  "report_type": "single",
+  "tags": [
+   "Markdown 泄漏",
+   "渲染确定性",
+   "指纹绑定"
+  ],
+  "stage": "R4",
+  "kind": "pipeline",
+  "result": "SUCCESS",
+  "confidence": 2.5,
+  "confirmed_projects": 0,
+  "language": "zh",
+  "page_roles": [
+   "cover",
+   "result"
+  ],
+  "applicable_when": "用「结构化 plan → 脚本渲染 pptx」的流水线做汇报，且 plan 的文本字段由模型填写时",
+  "pitfalls": [
+   "plan 的文本字段是纯文本，但模型会顺手写 **加粗**；渲染器不解析就会把星号原样投影到页面上",
+   "pptx 本质是 zip，成员时间戳来自当前时间，于是同一份 plan 隔几秒渲染两次哈希不同——「交付取最高分那一版」与指纹绑定都会失效"
+  ],
+  "attempts": [
+   {
+    "method": "要求模型不要在 plan 里写 Markdown",
+    "result": "fail",
+    "note": "提示词约束不可靠，四轮里出现了三次"
+   },
+   {
+    "method": "渲染器解析 **…** 成真加粗 + 落单 ** 去掉；另加机械规则扫描残留",
+    "result": "success",
+    "note": "修复后投影文字里的 ** 归零，且强调效果保留"
+   },
+   {
+    "method": "渲染后重写 zip，把成员时间戳固定为常量",
+    "result": "success",
+    "note": "同一份 plan 两次渲染字节一致，指纹绑定成立"
+   }
+  ],
+  "final_recipe": "当模型负责填结构化文本、脚本负责渲染时：①渲染器必须解析行内加粗并把落单标记去掉，同时加一条机械规则扫残留；②产物若是 zip 类容器，渲染后必须把成员时间戳规范化，否则任何「同一内容同一哈希」的假设都不成立。",
+  "positive_lessons": [
+   "凡是「模型写文本 + 脚本渲染」的界面，都要假设文本里会混进 Markdown"
+  ],
+  "negative_lessons": [
+   "不要在压缩产物上直接做哈希绑定，先规范化再算"
+  ],
+  "tools_used": [
+   "python-pptx",
+   "zipfile"
+  ],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": "bike-built-env-report",
+   "artifacts": [
+    "04-评审/score.json",
+    "04-评审/issues.jsonl",
+    "04-评审/score-history.jsonl"
+   ],
+   "seed": false,
+   "note": ""
+  },
+  "feature_hash": "53cbbcd1938013ad",
+  "created_at": "2026-09-24T01:06:58+00:00",
+  "updated_at": "2026-09-24T01:06:58+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "e24fc2830d72469cae5cc4b067bbf667",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-24T01-06-58+00-00-e24fc283.md"
+ },
+ "5eccb224d28d4d6b87e4e50ef5193639": {
+  "id": "5eccb224d28d4d6b87e4e50ef5193639",
+  "report_type": "single",
+  "tags": [
+   "页序重复",
+   "作者建议缺失",
+   "腾页"
+  ],
+  "stage": "R2",
+  "kind": "narrative",
+  "result": "SUCCESS",
+  "confidence": 2.5,
+  "confirmed_projects": 0,
+  "language": "zh",
+  "page_roles": [
+   "background",
+   "question",
+   "result",
+   "takeaway"
+  ],
+  "applicable_when": "页数与时长都紧（如 15 分钟 16 页）的单篇精读汇报，需要在保留内容的同时压缩页数时",
+  "pitfalls": [
+   "把「背景」与「研究问题」各排一页，两页其实在说同一件事（既有研究用什么因变量 / 本文换因变量）",
+   "只讲论文的发现与结论，却不单列「作者的建议」——而组会最关心的恰恰是「所以该怎么做」"
+  ],
+  "attempts": [
+   {
+    "method": "背景页 + 问题页各一页",
+    "result": "fail",
+    "note": "评审逐页扣分指出两页重复同一件事"
+   },
+   {
+    "method": "合并成一页 + 新增一页「作者的主张与建议」",
+    "result": "success",
+    "note": "总页数不变，结构层次却完整了；该页被评为「填上了最大的结构缺口」"
+   }
+  ],
+  "final_recipe": "页数吃紧时先找「在说同一件事的两页」去合并，把腾出的页位给「作者的建议/主张」——它比背景铺垫对听众有用得多。",
+  "positive_lessons": [
+   "压页数优先合并语义重复页，而不是砍信息"
+  ],
+  "negative_lessons": [
+   "不要因为论文的结论部分写得像结论、不像建议，就不单独呈现它的建议段"
+  ],
+  "tools_used": [],
+  "used_experience_ids": [],
+  "provenance": {
+   "report_project": "bike-built-env-report",
+   "artifacts": [
+    "04-评审/score.json",
+    "04-评审/issues.jsonl",
+    "04-评审/score-history.jsonl"
+   ],
+   "seed": false,
+   "note": ""
+  },
+  "feature_hash": "fbba4e122c642a60",
+  "created_at": "2026-09-24T01:06:58+00:00",
+  "updated_at": "2026-09-24T01:06:58+00:00",
+  "used_count": 0,
+  "archived": false,
+  "merged_into": null,
+  "archive_reason": "",
+  "qdrant_pending": false,
+  "qdrant_point_id": "5eccb224d28d4d6b87e4e50ef5193639",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\report-experience\\single\\2026-09-24T01-06-58+00-00-5eccb224.md"
+ }
+}

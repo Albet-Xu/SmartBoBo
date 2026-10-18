@@ -1,0 +1,16 @@
+# 采集工具的市场清单（scripts/build_market.py 读取；check 会校验本文件）。
+# publish: false —— 内置工具不进市场目录（用户已拍板）。
+id: bobo-crawl-tool          # 规范名（与 package.json name 一致）
+dir: tool-acquisition        # 包目录名 = 安装目录名
+name: 采集工具
+description: 通过本地常驻 Camoufox 浏览器渲染网页并落盘（html/md/skeleton），含验证码滑块人工接管入口。
+version: 1.0.0
+publish: false               # 内置工具不进市场目录（用户已拍板）
+builtin: true
+minAppVersion: 2.1.1
+mount:                       # 挂载行模板；name 中 @@APP@@ 占位符 = 应用 packages/bobo 绝对路径（阶段C安装器替换）
+  - id: tool-acquisition
+    name: "@@APP@@/tool-acquisition/lib/index.js"
+  - id: tool-browser-handoff
+    name: "@@APP@@/tool-acquisition/lib/handoff.js"
+defaultScope: all

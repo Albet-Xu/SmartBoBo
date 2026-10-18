@@ -1,0 +1,2226 @@
+import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { crc32, inflateRawSync } from "node:zlib";
+//#region ../plugins/repo-core.mjs
+/**
+* repo-core —— 插件仓库「本机安装链路」核心（阶段 C 原型，将来阶段 D 的 host 插件直接 import 它）。
+*
+* 职责：把市场上的预设/工具 zip 装进 DSH_HOME，并把包内的相对装配行改写成
+* 运行期可 import 的 `file:///` 绝对 URL——预设装进用户根后，包内
+* `name: '../../plugins/x.mjs'` 这类相对行以预设目录为基准解析必然断裂，
+* 这是阶段 0 排雷确认过的前提。
+*
+* zip 处理选型：**纯 Node 自读 zip 中央目录 + `zlib.inflateRawSync` 解压**，
+* 不 spawn python / tar。理由：
+*   1. zip slip 防护必须在解压前逐条校验条目名——自读中央目录时这一步天然前置；
+*   2. Git Bash 里的 `tar` 是 GNU tar（读不了 zip），Windows 自带的才是 bsdtar，
+*      两者随启动方式在 PATH 里漂移，spawn `tar` 不可靠；
+*   3. 本目录约定「纯 Node ESM 只 import 内置模块」，spawn 外部进程会把 python
+*      路径与 PATH 布局变成运行期依赖。
+* 能力边界：只支持 store/deflate、拒绝 zip64 与加密条目——市场包由
+* scripts/build_market.py 确定性打包，全部落在支持范围内。
+*
+* 落盘约定：
+*   - 预设 → `<dshHome>/.agent-presets/<id>/`（dsh 用户根，includeUserRoot 默认开）；
+*     旁边 `.seeded.json` 是首启播种标记（desktop/seed-presets.js 写），
+*     「随包内置」与否只认它——播种不写 state，只靠 state 分不出内置与仓库安装；
+*   - 工具 → `<dshHome>/.bobo-market/tools/<dir>/`；
+*   - 技能 → `<dshHome>/skills/<id>/`（上游 skill 发现器的用户级技能根，落盘即被
+*     chokidar watcher 免重启发现）；目录内的 `.market-meta.json` 是「市场装的」凭据，
+*     卸载只认它，手工放进去的技能拒绝从市场卸；
+*   - state → `<dshHome>/.bobo-market/state.json`，形状
+*     `{ presets:{id:{version,installedAt}}, tools:{id:{dir,version,builtin,scope}},
+*        skills:{id:{id,version,installedAt,dirName}}, categories }`
+*     （`categories` 是条目 id → 分类名的本地映射，阶段 D 的 `setCategory` 读写；
+*     老文件缺 `skills` 桶时读侧补默认 `{}`，不抛错）；
+*   - 详情缓存 → `<dshHome>/.bobo-market/details/<id>.md` + 同名 `.json` 记
+*     `{ id, version, fetchedAt }`，**版本随键存**——index 版本变了缓存即失效。
+*
+* 所有安装/卸载/查询导出均为 async；纯文本改写、manifest 解析、版本比较与
+* 三方合并导出为同步纯函数，便于 `--selftest` 与阶段 D 的 host 插件复用。
+*/
+/** 预设 id / 工具 dir id：与 dsh 的 `PRESET_ID` 同形，顺带堵死路径穿越。 */
+const PRESET_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
+/**
+* 技能目录名（`<dshHome>/skills/<dirName>/`）白名单：小写字母数字开头，其后允许
+* `.` `_` `-`——市场技能的 dirName 由 slug 消毒而来（可含点与下划线），比
+* {@link PRESET_ID_RE} 宽；不含 `/`，单段名不构成穿越。
+*/
+const SKILL_DIR_RE = /^[a-z0-9][a-z0-9._-]*$/;
+/** 「这个目录是市场装的」凭据文件名，与 `market-core.mjs` 的 `MARKET_META_FILENAME` 同值。 */
+const MARKET_META_NAME = ".market-meta.json";
+/**
+* 是否是第三方市场的技能 id（`clawhub:<slug>` / `skillhub:<slug>`，M2 的
+* `market-core` 写进 state skills 桶的键形）。slug 保留上游原样（允许大小写），
+* 盐目录名由 `market-core` 消毒成小写。
+* @param id - 待判定的条目 id。
+* @returns 带来源前缀且 slug 合法时为 `true`。
+*/
+function isMarketSkillId(id) {
+	return typeof id === "string" && /^(?:clawhub|skillhub):[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id);
+}
+/** 托管块起始行前缀：`# --- repo-managed: tool <id> v<version> ---`。 */
+const BLOCK_PREFIX = "# --- repo-managed: tool ";
+/** 托管块结束行（整行 trimEnd 后比对）。 */
+const BLOCK_END = "# --- end repo-managed ---";
+/**
+* 解析 zip 中央目录，返回逐条目元数据；只读不写。
+* @param buf - 完整 zip 字节。
+* @returns `[{ name, flags, method, crc, csize, usize, localOffset }]`。
+* @throws 非 zip（无 EOCD）、zip64、中央目录越界/签名不符时抛错。
+*/
+function readZipEntries(buf) {
+	let eocd = -1;
+	const min = Math.max(0, buf.length - 22 - 65535);
+	for (let i = buf.length - 22; i >= min; i -= 1) if (buf.readUInt32LE(i) === 101010256) {
+		eocd = i;
+		break;
+	}
+	if (eocd < 0) throw new Error("不是合法的 zip（找不到中央目录结束记录 EOCD）");
+	const count = buf.readUInt16LE(eocd + 10);
+	const cdOffset = buf.readUInt32LE(eocd + 16);
+	if (count === 65535 || cdOffset === 4294967295) throw new Error("暂不支持 zip64 归档（市场包应远小于此）");
+	const entries = [];
+	let pos = cdOffset;
+	for (let i = 0; i < count; i += 1) {
+		if (pos + 46 > buf.length || buf.readUInt32LE(pos) !== 33639248) throw new Error(`zip 中央目录第 ${i + 1} 条损坏（签名不符或越界）`);
+		const csize = buf.readUInt32LE(pos + 20);
+		const usize = buf.readUInt32LE(pos + 24);
+		if (csize === 4294967295 || usize === 4294967295) throw new Error("暂不支持 zip64 条目");
+		const nameLen = buf.readUInt16LE(pos + 28);
+		const extraLen = buf.readUInt16LE(pos + 30);
+		const commentLen = buf.readUInt16LE(pos + 32);
+		entries.push({
+			name: buf.toString("utf8", pos + 46, pos + 46 + nameLen),
+			flags: buf.readUInt16LE(pos + 8),
+			method: buf.readUInt16LE(pos + 10),
+			crc: buf.readUInt32LE(pos + 16),
+			csize,
+			usize,
+			localOffset: buf.readUInt32LE(pos + 42)
+		});
+		pos += 46 + nameLen + extraLen + commentLen;
+	}
+	return entries;
+}
+/**
+* zip slip 校验：逐条目拒绝越权路径。**解压前调用，此时一个文件都还没写。**
+* @param entries - {@link readZipEntries} 的结果；通过后每条挂上归一化名 `norm`（`\`→`/`）。
+* @throws 空名 / NUL / 绝对路径 / 盘符 / `..` 段时抛错并点名条目。
+*/
+function assertSafeEntries(entries) {
+	for (const entry of entries) {
+		const norm = entry.name.replace(/\\/g, "/");
+		if (norm === "" || norm.includes("\0")) throw new Error(`zip 含非法条目名：${JSON.stringify(entry.name)}`);
+		if (norm.startsWith("/") || /^[A-Za-z]:/.test(norm)) throw new Error(`zip 含绝对路径条目（zip slip 拒绝）：${entry.name}`);
+		if (norm.split("/").includes("..")) throw new Error(`zip 含 .. 越权条目（zip slip 拒绝）：${entry.name}`);
+		entry.norm = norm;
+	}
+}
+/**
+* 把**已通过** {@link assertSafeEntries} 的条目解压到目标目录。
+* @param buf - 完整 zip 字节。
+* @param entries - 已校验条目（带 `norm`）。
+* @param destDir - 解压根目录（须已存在）。
+* @throws 加密、未知压缩法、本地头/数据越界、CRC 不符时抛错（出错条目不落盘）。
+*/
+async function extractZipEntries(buf, entries, destDir) {
+	const root = resolve(destDir);
+	for (const entry of entries) {
+		if (entry.flags & 1) throw new Error(`zip 条目加密，拒绝：${entry.name}`);
+		const target = resolve(root, entry.norm);
+		if (target !== root && !target.startsWith(root + sep)) throw new Error(`zip slip：${entry.name} 解压后落在目标目录之外`);
+		if (entry.norm.endsWith("/")) {
+			await mkdir(target, { recursive: true });
+			continue;
+		}
+		const lo = entry.localOffset;
+		if (lo + 30 > buf.length || buf.readUInt32LE(lo) !== 67324752) throw new Error(`zip 本地头损坏：${entry.name}`);
+		const dataStart = lo + 30 + buf.readUInt16LE(lo + 26) + buf.readUInt16LE(lo + 28);
+		const dataEnd = dataStart + entry.csize;
+		if (dataEnd > buf.length) throw new Error(`zip 条目数据越界（归档截断）：${entry.name}`);
+		const raw = buf.subarray(dataStart, dataEnd);
+		let data;
+		if (entry.method === 0) data = Buffer.from(raw);
+		else if (entry.method === 8) try {
+			data = inflateRawSync(raw);
+		} catch (error) {
+			throw new Error(`zip 解压失败 ${entry.name}：${error instanceof Error ? error.message : String(error)}`);
+		}
+		else throw new Error(`zip 条目 ${entry.name} 用了不支持的压缩方式（method=${entry.method}，仅支持 store/deflate）`);
+		if (typeof crc32 === "function" && crc32(data) >>> 0 !== entry.crc) throw new Error(`zip CRC 校验失败（文件损坏）：${entry.name}`);
+		await mkdir(dirname(target), { recursive: true });
+		await writeFile(target, data);
+	}
+}
+/**
+* 读 zip → **全量条目名校验** → 解压。校验发生在任何写盘动作之前。
+* @param zipPath - zip 文件路径。
+* @param destDir - 解压根目录（须已存在）。
+* @returns 条目数组（已校验、带归一化名 `norm`）。
+*/
+async function unzipChecked(zipPath, destDir) {
+	const buf = await readFile(zipPath);
+	const entries = readZipEntries(buf);
+	assertSafeEntries(entries);
+	await extractZipEntries(buf, entries, destDir);
+	return entries;
+}
+/**
+* 把装配文件里的模块引用改写成 `file:///` 绝对 URL。
+*
+* 为什么必须绝对化：声明装到 `<dshHome>/.agent-presets/<id>/` 之后，Node 从那里向上扫
+* node_modules 永远够不到随包依赖 —— 随包 `packages/bobo/presets/` 里只有 `include.mjs`
+* （`package.json` 被 extraResources 过滤掉，首启 pnpm install 就不会给它建
+* node_modules），22 个 `@deepseek-ai/*` 会全部 import 失败；实测症状就是
+* `preset-workflow (@deepseek-ai/dsh-agent-preset): failed to import`，roster 一行不加。
+* 内置 4 个预设没这问题：它们的声明经 patch 层 merge 进根组合，baseUrl 落在 profile
+* 目录里，走宿主自带的解析通道；而那条通道只覆盖 `$DSH_HOME/profiles/**`，市场装进
+* `.agent-presets/` 的声明不在其中。
+*
+* 规则：
+*   - `../../x` —— 源树里预设位于 `<appRoot>/dsh/packages/bobo/presets/<id>/`，
+*     `../../` 正好落在 bobo 包根，按它解析；
+*   - 其余裸包名（含 `pkg/sub` 子路径）—— 按**安装树运行时**
+*     （`<appRoot>/dsh/apps/cli`，实测 22/22 个预设依赖全可解析；
+*     `.pnpm/node_modules` 与 `packages/bundle/web-app/node_modules` 是等价落点）
+*     解析成入口文件的 file URL；解析不到就**原样保留** —— 宁可让它在自己那边报错，
+*     也不要把路径改坏；
+*   - `./` 相对、`cordis:` 内建、`file:`/绝对路径一律不动；`command:`/`args:`/`cwd:`
+*     等 MCP 行不是 `name:` 行，天然不动；
+*   - 只碰 `name:` 值行：注释行不会命中，行内注释与引号风格保留（裸值补单引号）。
+*
+* @param text - `agent.cordis.yml` / `decl.yml` 全文。
+* @param appRoot - 仓库/应用根（包源树与安装树所在根）。
+* @returns `{ text, rewrites }`：改写后全文 + 逐条 `{ from, to }` 记录。
+*/
+function rewritePresetPaths(text, appRoot) {
+	const boboRoot = resolve(appRoot, "dsh", "packages", "bobo");
+	const resolvers = [join(appRoot, "dsh", "apps", "cli", "_bobo-preset-resolve.js"), join(appRoot, "dsh", "node_modules", ".pnpm", "node_modules", "_bobo-preset-resolve.js")].map((anchor) => createRequire(anchor));
+	const row = /^(\s*name:\s*)(['"]?)([^\s'"#]+)\2([\s\S]*)$/;
+	const rewrites = [];
+	return {
+		text: text.split("\n").map((line) => {
+			const match = row.exec(line);
+			if (match == null) return line;
+			const [, head, quote, value, tail] = match;
+			const url = rewriteTarget(value, boboRoot, resolvers);
+			if (url === void 0) return line;
+			rewrites.push({
+				from: value,
+				to: url
+			});
+			const closing = quote === "" ? "'" : quote;
+			return `${head}${closing}${url}${closing}${tail}`;
+		}).join("\n"),
+		rewrites
+	};
+}
+/**
+* 一条 `name:` 值该改写成什么。
+* @param value - YAML 里 `name` 的值。
+* @param boboRoot - 随包 `packages/bobo` 目录。
+* @param resolvers - 依次尝试的解析器（以安装树运行时为根）。
+* @returns 目标 file URL；`undefined` 表示原样保留。
+*/
+function rewriteTarget(value, boboRoot, resolvers) {
+	if (value.startsWith("../../")) return pathToFileURL(resolve(boboRoot, value.slice(6))).href;
+	if (value.startsWith(".") || value.startsWith("cordis:") || value.startsWith("file:")) return void 0;
+	if (/^[A-Za-z]:[\\/]/.test(value) || value.startsWith("/")) return void 0;
+	for (const resolver of resolvers) try {
+		return pathToFileURL(resolver.resolve(value)).href;
+	} catch {}
+}
+/**
+* 构造一个工具的托管块文本（末尾不带换行）。
+* @param toolId - manifest 规范名（state 的 tools 键）。
+* @param version - 写进标记行的版本，仅用于展示与追溯。
+* @param mounts - 已解析的挂载行 `[{ id, url }]`。
+* @returns 块文本。
+*/
+function managedBlock(toolId, version, mounts) {
+	const lines = [`${BLOCK_PREFIX}${toolId} v${version} ---`];
+	for (const mount of mounts) lines.push(`- id: ${mount.id}`, `  name: '${mount.url}'`);
+	lines.push(BLOCK_END);
+	return lines.join("\n");
+}
+/**
+* 删除文本中属于某工具的**全部**托管块。
+* @param text - 预设 `agent.cordis.yml` 全文。
+* @param toolId - 工具 id；匹配前缀带空格边界（`bobo-zz` 不会误删 `bobo-zztool` 的块）。
+* @returns `{ text, removed }`：删除后全文（尾部收敛为单个换行）与删除块数。
+* @throws 起始标记后找不到结束标记（块被手工改坏）时抛错，不静默吞。
+*/
+function removeManagedBlocks(text, toolId) {
+	const prefix = `${BLOCK_PREFIX}${toolId} `;
+	const lines = text.split("\n");
+	const out = [];
+	let removed = 0;
+	let i = 0;
+	while (i < lines.length) {
+		if (lines[i].startsWith(prefix)) {
+			let end = i;
+			while (end < lines.length && lines[end].trimEnd() !== BLOCK_END) end += 1;
+			if (end >= lines.length) throw new Error(`托管块损坏（缺结束标记）：tool ${toolId}`);
+			i = end + 1;
+			removed += 1;
+			continue;
+		}
+		out.push(lines[i]);
+		i += 1;
+	}
+	return {
+		text: `${out.join("\n").replace(/\n*$/, "")}\n`,
+		removed
+	};
+}
+/**
+* 注入托管块：先删同 id 旧块，再追加到文件末尾——重复调用只留一份（幂等）。
+* @param text - 预设 `agent.cordis.yml` 全文。
+* @param toolId - 工具 id。
+* @param version - 版本（写进标记行）。
+* @param mounts - 已解析的挂载行 `[{ id, url }]`。
+* @returns 注入后全文。
+*/
+function injectManagedBlock(text, toolId, version, mounts) {
+	const { text: cleaned } = removeManagedBlocks(text, toolId);
+	const block = managedBlock(toolId, version, mounts);
+	const base = cleaned.replace(/\s+$/, "");
+	return base === "" ? `${block}\n` : `${base}\n\n${block}\n`;
+}
+/** state.json 绝对路径。 */
+function statePath(dshHome) {
+	return join(dshHome, ".bobo-market", "state.json");
+}
+/**
+* 读 state。文件不存在返回默认形状；JSON 损坏或缺 presets/tools 对象时抛错（不静默重置）。
+* `skills` 桶是后加的：老 state.json 没有它时补默认 `{}`，不抛错；写了但不是对象则按形状错抛。
+* 导出给 `market-core.mjs` 复用：市场安装写 skills 桶、卸载兜底读 dirName 都走同一份读写，
+* 不再各自解析 state.json。
+* @param dshHome - DSH_HOME。
+* @returns `{ presets, tools, skills, categories }`。
+*/
+async function readState(dshHome) {
+	let raw;
+	try {
+		raw = await readFile(statePath(dshHome), "utf8");
+	} catch (error) {
+		if (error instanceof Error && error.code === "ENOENT") return {
+			presets: {},
+			tools: {},
+			skills: {},
+			categories: {}
+		};
+		throw error;
+	}
+	let doc;
+	try {
+		doc = JSON.parse(raw);
+	} catch {
+		throw new Error(`state 不是合法 JSON：${statePath(dshHome)}（手修或删除后重装）`);
+	}
+	if (doc === null || typeof doc !== "object" || typeof doc.presets !== "object" || doc.presets === null || typeof doc.tools !== "object" || doc.tools === null) throw new Error(`state 形状不对（缺 presets / tools 对象）：${statePath(dshHome)}`);
+	const skills = doc.skills === void 0 || doc.skills === null ? {} : doc.skills;
+	if (typeof skills !== "object") throw new Error(`state 形状不对（skills 不是对象）：${statePath(dshHome)}`);
+	return {
+		presets: doc.presets,
+		tools: doc.tools,
+		skills,
+		categories: doc.categories ?? {}
+	};
+}
+/**
+* 写 state（先写临时文件再 rename，避免半截 JSON）。
+* 导出理由同 {@link readState}：`market-core.mjs` 安装成功后要往 skills 桶落条目。
+* @param dshHome - DSH_HOME。
+* @param state - 完整 state 文档。
+*/
+async function writeState(dshHome, state) {
+	const target = statePath(dshHome);
+	await mkdir(dirname(target), { recursive: true });
+	const tmp = `${target}.${randomUUID().slice(0, 8)}.tmp`;
+	await writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`);
+	await rename(tmp, target);
+}
+/** 建解压暂存目录 `<dshHome>/.bobo-market/stage-<rand>`（与目标同卷，rename 不跨设备）。 */
+async function ensureStageDir(dshHome) {
+	const parent = join(dshHome, ".bobo-market");
+	await mkdir(parent, { recursive: true });
+	return mkdtemp(join(parent, "stage-"));
+}
+/**
+* 在暂存目录里定位包根：顶层有 marker 用顶层，否则要求**唯一**子目录持有 marker。
+* @param staging - 暂存目录。
+* @param marker - 结构标记文件名（`preset.yml` / `manifest.yml`）。
+* @returns 包根绝对路径。
+* @throws 0 个或多个顶层候选时抛错并点名。
+*/
+function findPackageRoot(staging, marker) {
+	if (existsSync(join(staging, marker))) return staging;
+	const holders = readdirSync(staging, { withFileTypes: true }).filter((entry) => entry.isDirectory() && existsSync(join(staging, entry.name, marker))).map((entry) => entry.name);
+	if (holders.length === 1) return join(staging, holders[0]);
+	if (holders.length > 1) throw new Error(`zip 结构不对：多个顶层目录含 ${marker}（${holders.join("、")}）`);
+	throw new Error(`zip 结构不对：找不到 ${marker}（顶层及唯一子目录下都没有）`);
+}
+/**
+* 目录移动（EXDEV 跨设备时退回 copy+rm）。
+* @param src - 源目录（完成后不存在）。
+* @param dest - 目标目录（父目录须已存在）。
+*/
+async function moveInto(src, dest) {
+	try {
+		await rename(src, dest);
+	} catch (error) {
+		const code = error instanceof Error ? error.code : void 0;
+		if (code !== "EXDEV" && code !== "ENOTEMPTY" && code !== "EEXIST") throw error;
+		await cp(src, dest, { recursive: true });
+		await rm(src, {
+			recursive: true,
+			force: true
+		});
+	}
+}
+/**
+* 取 scope 预设的装配文件路径，且**只允许用户根**：`.agent-presets` 下已安装的。
+* @param dshHome - DSH_HOME。
+* @param presetId - 预设 id。
+* @returns `agent.cordis.yml` 绝对路径。
+* @throws id 形状非法，或用户根下没有该预设（配置根/随包根等其他根一律拒绝）。
+*/
+function userPresetFile(dshHome, presetId) {
+	if (typeof presetId !== "string" || !PRESET_ID_RE.test(presetId)) throw new Error(`scope 预设 id 不合法：${JSON.stringify(presetId)}（须匹配 ${PRESET_ID_RE}）`);
+	const file = join(dshHome, ".agent-presets", presetId, "agent.cordis.yml");
+	if (!existsSync(file)) throw new Error(`scope 只允许已安装的用户根预设：${presetId} 不在 ${join(dshHome, ".agent-presets")} 下（其他根一律拒绝）`);
+	return file;
+}
+/** 校验并去重一组 scope id。 */
+function uniqueScopeIds(scope) {
+	if (!Array.isArray(scope)) throw new Error(`scope 须是数组，实际：${typeof scope}`);
+	const seen = [];
+	for (const item of scope) {
+		if (typeof item !== "string" || item.trim() === "") throw new Error(`scope 含空项：${JSON.stringify(item)}`);
+		const id = item.trim();
+		if (!seen.includes(id)) seen.push(id);
+	}
+	return seen;
+}
+/** 从包内 DETAILS.md frontmatter 推断版本（build_market 的版本就取自这里）。 */
+async function readDetailsVersion(pkgRoot) {
+	let text;
+	try {
+		text = await readFile(join(pkgRoot, "DETAILS.md"), "utf8");
+	} catch {
+		return;
+	}
+	const fence = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+	if (!fence) return void 0;
+	const version = /^version:\s*(\S+)/m.exec(fence[1]);
+	return version ? version[1] : void 0;
+}
+/**
+* 推断预设 id：显式传入 > zip 唯一顶层目录名 > 文件名 `bobo-<id>-preset-<ver>.zip`。
+* @param options - `{ explicit, pkgRoot, staging, zipPath }`。
+* @returns 预设 id。
+* @throws 三者都推不出来时抛错并提示显式传 id。
+*/
+function derivePresetId({ explicit, pkgRoot, staging, zipPath }) {
+	if (explicit !== void 0 && explicit !== null && explicit !== "") return explicit;
+	if (pkgRoot !== staging) {
+		const top = basename(pkgRoot);
+		if (PRESET_ID_RE.test(top)) return top;
+	}
+	const match = /bobo-(.+)-preset-\d/.exec(basename(zipPath));
+	if (match && PRESET_ID_RE.test(match[1])) return match[1];
+	throw new Error(`无法推断预设 id（zip 无合法顶层目录名且文件名不符 bobo-<id>-preset-<ver>.zip）：${zipPath}`);
+}
+/** 去掉未加引号的行尾注释（引号内的 `#` 保留）。 */
+function stripInlineComment(value) {
+	const trimmed = value.trim();
+	if (trimmed.startsWith("#")) return "";
+	if (trimmed.startsWith("\"") || trimmed.startsWith("'")) {
+		const quote = trimmed[0];
+		const end = trimmed.indexOf(quote, 1);
+		return end < 0 ? trimmed : trimmed.slice(0, end + 1);
+	}
+	const hash = /\s+#/.exec(trimmed);
+	return (hash ? trimmed.slice(0, hash.index) : trimmed).trim();
+}
+/** 去掉一层包裹引号。 */
+function unquote(value) {
+	const trimmed = value.trim();
+	if (trimmed.length >= 2 && (trimmed[0] === "\"" || trimmed[0] === "'") && trimmed.at(-1) === trimmed[0]) return trimmed.slice(1, -1);
+	return trimmed;
+}
+/**
+* 解析工具 `manifest.yml`：仓库既有 2 空格缩进风格的子集——
+* 顶层标量 + `mount:` 下 `  - id:` / `    name:` 条目。
+* mount 条目里的 `config:` 等其余内容按阶段 C 托管块格式（仅 id+name）忽略。
+* @param text - manifest 全文。
+* @returns 顶层标量（含 `id`/`dir`/`version`/`builtin` 字符串）+ `mount: [{id,name}]`。
+* @throws mount 缺失/为空、或条目缺 id/name 时抛错。
+*/
+function parseManifest(text) {
+	const out = {};
+	let mount = null;
+	for (const raw of text.split(/\r?\n/)) {
+		if (raw.trim() === "" || /^\s*#/.test(raw)) continue;
+		const top = /^([A-Za-z][\w-]*):(.*)$/.exec(raw);
+		if (top) {
+			const [, key, rest] = top;
+			if (key === "mount") {
+				mount = [];
+				out.mount = mount;
+				continue;
+			}
+			mount = null;
+			out[key] = unquote(stripInlineComment(rest));
+			continue;
+		}
+		if (mount === null) continue;
+		const item = /^ {2}- id:\s*(.*)$/.exec(raw);
+		if (item) {
+			mount.push({ id: unquote(stripInlineComment(item[1])) });
+			continue;
+		}
+		const nameLine = /^ {4}name:\s*(.*)$/.exec(raw);
+		if (nameLine && mount.length > 0) mount.at(-1).name = unquote(stripInlineComment(nameLine[1]));
+	}
+	if (!Array.isArray(out.mount) || out.mount.length === 0) throw new Error("manifest 缺 mount 列表或为空（mount 至少要有一条 - id / name）");
+	for (const entry of out.mount) if (!entry.id || !entry.name) throw new Error(`manifest mount 条目缺 id 或 name：${JSON.stringify(entry)}`);
+	return out;
+}
+/**
+* 解析 manifest name 模板里的 `@@APP@@` 占位符，得到最终 `file:///` URL。
+*
+* 规则（与任务书一致）：
+*   - `builtin: true` → `@@APP@@` = `<appRoot>/dsh/packages/bobo`（模板自带 `<dir>/` 段，直接拼接）；
+*   - 市场工具 → `@@APP@@` = `<dshHome>/.bobo-market/tools`，且保证路径经过工具自己的
+*     安装目录：余段不以 `/<dir>` 开头时补上——`@@APP@@/lib/x.js` 与
+*     `@@APP@@/<dir>/lib/x.js` 两种写法都落进同一安装位置。
+* @param template - manifest 里的 name 模板。
+* @param options - `{ builtin, appRoot, dshHome, dir }`。
+* @returns `file:///` URL；模板无 `@@APP@@` 时按「file: 原样 / 绝对路径转 URL / 其余原样」处理。
+*/
+function resolveMountUrl(template, { builtin, appRoot, dshHome, dir }) {
+	if (!template.includes("@@APP@@")) {
+		if (template.startsWith("file:")) return template;
+		if (template.startsWith("/") || /^[A-Za-z]:[\\/]/.test(template)) return pathToFileURL(template).href;
+		return template;
+	}
+	const base = builtin ? resolve(appRoot, "dsh", "packages", "bobo") : resolve(dshHome, ".bobo-market", "tools");
+	let rest = template.replace("@@APP@@", "").replace(/\\/g, "/");
+	if (!builtin && !(rest === `/${dir}` || rest.startsWith(`/${dir}/`))) rest = `/${dir}${rest}`;
+	return pathToFileURL(resolve(base, rest.replace(/^\//, ""))).href;
+}
+/**
+* 安装预设 zip 到 `<dshHome>/.agent-presets/<id>/`。
+*
+* 流程：条目名校验（zip slip 防护**前置**）→ 解压到 `.bobo-market/stage-*` →
+* 校验 `preset.yml` + `agent.cordis.yml` + `decl.yml` → 同 id 旧目录整目录删除 →
+* 移入 → 逐行改写 `agent.cordis.yml` 与 `decl.yml` 的 `../../` 相对装配行为
+* `file:///` → 更新 state；暂存目录无论成败都会清理。
+*
+* `decl.yml` 是**硬要求**：0.2.0 起 registry 只认声明行，且不读 `.agent-presets/`，
+* 少了它装下来也注册不上——宁可装机时报一条能看懂的错，也不要留一个“装好了却
+* 没有”的预设。旧版市场（≤1.0.0）的 zip 不带它，按错误提示重装即可。
+* @param options - `{ zipPath, dshHome, appRoot, id?, version? }`。
+*   `id`/`version` 缺省时分别从 zip 顶层目录名（或文件名 `bobo-<id>-preset-<ver>.zip`）
+*   与包内 DETAILS.md frontmatter 推断；**URL 安装应把 index 里的值显式传入**。
+* @returns `{ id, version, dir, existed, entryCount, rewrites }`。
+* @throws 结构缺文件、id 非法、zip slip、解压损坏等均抛错并写明原因。
+*/
+async function installPreset({ zipPath, dshHome, appRoot, id, version }) {
+	if (!appRoot) throw new Error("installPreset 需要 appRoot（仓库根，用于解析 ../../ 相对行）");
+	if (!existsSync(zipPath)) throw new Error(`zip 不存在：${zipPath}`);
+	const staging = await ensureStageDir(dshHome);
+	try {
+		const entries = await unzipChecked(zipPath, staging);
+		const pkgRoot = findPackageRoot(staging, "preset.yml");
+		if (!existsSync(join(pkgRoot, "agent.cordis.yml"))) throw new Error("zip 结构不对：缺 agent.cordis.yml（预设包必须同时有 preset.yml 与 agent.cordis.yml）");
+		if (!existsSync(join(pkgRoot, "decl.yml"))) throw new Error("zip 结构不对：缺 decl.yml（0.2.0 声明式预设没有它就注册不上）——该包多半来自旧版市场（≤1.0.0），请重新下载后安装");
+		const presetId = derivePresetId({
+			explicit: id,
+			pkgRoot,
+			staging,
+			zipPath
+		});
+		if (!PRESET_ID_RE.test(presetId)) throw new Error(`预设 id 不合法：${presetId}（须匹配 ${PRESET_ID_RE}）`);
+		const ver = version ?? await readDetailsVersion(pkgRoot) ?? "0.0.0";
+		const dest = join(dshHome, ".agent-presets", presetId);
+		await mkdir(join(dshHome, ".agent-presets"), { recursive: true });
+		const existed = existsSync(dest);
+		if (existed) await rm(dest, {
+			recursive: true,
+			force: true
+		});
+		await moveInto(pkgRoot, dest);
+		const rewrites = [];
+		for (const name of ["agent.cordis.yml", "decl.yml"]) {
+			const filePath = join(dest, name);
+			const { text: rewritten, rewrites: hits } = rewritePresetPaths(await readFile(filePath, "utf8"), appRoot);
+			if (hits.length > 0) await writeFile(filePath, rewritten);
+			rewrites.push(...hits);
+		}
+		const state = await readState(dshHome);
+		state.presets[presetId] = {
+			version: ver,
+			installedAt: (/* @__PURE__ */ new Date()).toISOString()
+		};
+		await writeState(dshHome, state);
+		return {
+			id: presetId,
+			version: ver,
+			dir: dest,
+			existed,
+			entryCount: entries.length,
+			rewrites
+		};
+	} finally {
+		await rm(staging, {
+			recursive: true,
+			force: true
+		});
+	}
+}
+/**
+* 安装工具 zip 到 `<dshHome>/.bobo-market/tools/<dir>/`，并把托管块注入 scope 预设。
+*
+* 流程：条目名校验（zip slip 前置）→ 解压暂存 → 校验 manifest.yml / package.json
+* （必须 `{"type":"module"}`，否则 lib/*.js 被当 CJS 加载会挂载失败）/ lib/ →
+* 校验 scope 全部是用户根预设 → 旧安装目录整目录替换 → 逐 mount 校验目标文件存在 →
+* 向每个 scope 预设注入托管块（先删同 id 旧块 → 幂等）→ 同 id 旧 scope 里多出的
+* 预设清块 → 更新 state。
+* @param options - `{ zipPath, dshHome, appRoot, scope }`；`scope` 为用户根预设 id 数组（可空）。
+* @returns `{ id, dir, version, builtin, scope, entryCount, mounts, blocksWritten, blocksCleared }`。
+* @throws 结构/manifest/package.json/scope 非法、mount 目标缺失等均抛错并写明原因。
+*/
+async function installTool({ zipPath, dshHome, appRoot, scope = [] }) {
+	if (!appRoot) throw new Error("installTool 需要 appRoot（仓库根，用于解析 @@APP@@）");
+	if (!existsSync(zipPath)) throw new Error(`zip 不存在：${zipPath}`);
+	const scopeIds = uniqueScopeIds(scope);
+	if (!existsSync(zipPath)) throw new Error(`zip 不存在：${zipPath}`);
+	const staging = await ensureStageDir(dshHome);
+	try {
+		const entries = await unzipChecked(zipPath, staging);
+		const pkgRoot = findPackageRoot(staging, "manifest.yml");
+		const manifest = parseManifest(await readFile(join(pkgRoot, "manifest.yml"), "utf8"));
+		const toolId = manifest.id;
+		const dir = manifest.dir;
+		if (typeof toolId !== "string" || !PRESET_ID_RE.test(toolId)) throw new Error(`manifest id 不合法：${JSON.stringify(manifest.id)}（须匹配 ${PRESET_ID_RE}）`);
+		if (typeof dir !== "string" || !PRESET_ID_RE.test(dir)) throw new Error(`manifest dir 不合法：${JSON.stringify(manifest.dir)}（须匹配 ${PRESET_ID_RE}）`);
+		if (typeof manifest.version !== "string" || manifest.version === "") throw new Error(`manifest 缺 version：${zipPath}`);
+		if (!existsSync(join(pkgRoot, "package.json"))) throw new Error("工具包缺 package.json（没有 {\"type\":\"module\"} 时 lib/*.js 会被当 CJS 加载，挂载必败）");
+		let pkgJson;
+		try {
+			pkgJson = JSON.parse(await readFile(join(pkgRoot, "package.json"), "utf8"));
+		} catch (error) {
+			throw new Error(`工具包 package.json 不是合法 JSON：${error instanceof Error ? error.message : String(error)}`);
+		}
+		if (pkgJson === null || typeof pkgJson !== "object" || pkgJson.type !== "module") throw new Error("工具包 package.json 必须含 \"type\": \"module\"（否则 lib/*.js 按 CJS 加载会挂载失败）");
+		if (!existsSync(join(pkgRoot, "lib"))) throw new Error("工具包缺 lib/ 目录");
+		const presetFiles = scopeIds.map((presetId) => userPresetFile(dshHome, presetId));
+		const builtin = manifest.builtin === "true";
+		const mounts = manifest.mount.map((mount) => ({
+			id: mount.id,
+			url: resolveMountUrl(mount.name, {
+				builtin,
+				appRoot,
+				dshHome,
+				dir
+			})
+		}));
+		const state = await readState(dshHome);
+		const previous = state.tools[toolId];
+		const dest = join(dshHome, ".bobo-market", "tools", dir);
+		await mkdir(join(dshHome, ".bobo-market", "tools"), { recursive: true });
+		if (existsSync(dest)) await rm(dest, {
+			recursive: true,
+			force: true
+		});
+		await moveInto(pkgRoot, dest);
+		for (const mount of mounts) {
+			if (!mount.url.startsWith("file:")) continue;
+			let target;
+			try {
+				target = fileURLToPath(mount.url);
+			} catch (error) {
+				throw new Error(`mount ${mount.id} 的 URL 不合法：${mount.url}（${error instanceof Error ? error.message : String(error)}）`);
+			}
+			if (!existsSync(target)) throw new Error(`mount ${mount.id} 的目标文件不存在：${target}`);
+		}
+		const blocksWritten = [];
+		for (const file of presetFiles) {
+			await writeFile(file, injectManagedBlock(await readFile(file, "utf8"), toolId, manifest.version, mounts));
+			blocksWritten.push(dirname(file));
+		}
+		const blocksCleared = [];
+		if (previous && Array.isArray(previous.scope)) for (const oldId of previous.scope) {
+			if (scopeIds.includes(oldId)) continue;
+			const file = join(dshHome, ".agent-presets", oldId, "agent.cordis.yml");
+			if (!existsSync(file)) continue;
+			const { text: cleaned, removed } = removeManagedBlocks(await readFile(file, "utf8"), toolId);
+			if (removed > 0) {
+				await writeFile(file, cleaned);
+				blocksCleared.push(oldId);
+			}
+		}
+		state.tools[toolId] = {
+			dir,
+			version: manifest.version,
+			builtin,
+			scope: scopeIds
+		};
+		await writeState(dshHome, state);
+		return {
+			id: toolId,
+			dir,
+			version: manifest.version,
+			builtin,
+			scope: scopeIds,
+			entryCount: entries.length,
+			mounts,
+			blocksWritten,
+			blocksCleared
+		};
+	} finally {
+		await rm(staging, {
+			recursive: true,
+			force: true
+		});
+	}
+}
+/**
+* 读技能 `SKILL.md` frontmatter 里的 `name`（解析不到返回 `null`）。
+* @param skillMd - `SKILL.md` 绝对路径。
+* @returns frontmatter 的 `name`（去引号、去行尾注释），或 `null`。
+*/
+async function readSkillName(skillMd) {
+	let text;
+	try {
+		text = await readFile(skillMd, "utf8");
+	} catch {
+		return null;
+	}
+	const fence = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+	if (!fence) return null;
+	const match = /^name:\s*(.+)$/m.exec(fence[1]);
+	if (!match) return null;
+	return unquote(stripInlineComment(match[1]));
+}
+/**
+* 读一个技能目录的 `.market-meta.json` 并校验它归属该目录（`meta.id === id`）。
+* @param dir - 技能目录绝对路径。
+* @returns 合法且归属该 id 的 meta；缺失/损坏/非对象/`id` 不符返回 `null`。
+*/
+async function readOwnedSkillMeta(dir, id) {
+	let parsed;
+	try {
+		parsed = JSON.parse(await readFile(join(dir, MARKET_META_NAME), "utf8"));
+	} catch {
+		return null;
+	}
+	if (parsed === null || typeof parsed !== "object" || parsed.id !== id) return null;
+	return parsed;
+}
+/**
+* 安装技能 zip 到 `<dshHome>/skills/<id>/`——上游 skill 发现器的用户级技能根，
+* 落盘即被 chokidar watcher 免重启发现，模型按需加载（本函数只负责把 zip 装进去）。
+*
+* 目标已存在时按版本分流：**已装版本与入参版本相同 → 报 already-installed 拒绝**；
+* **版本不同 → 覆盖安装**，但只在目标目录的 `.market-meta.json` 归属本 `id` 时换入
+* （与 `market-core` 的安全换入同语义：先把旧目录改名挪开，换入成功才删，换入失败
+* 把旧目录挪回去），归属不符（手工目录、别的 id 装的）一律拒绝——技能可能被手工改过，
+* 静默覆盖会丢用户内容。已装版本取 state 的 `skills[id].version`，state 没记录时退回
+* `.market-meta.json` 的 `version`，两者都读不到按「版本不同」走覆盖（归属仍须校验）。
+*
+* 流程：条目名校验（zip slip 防护前置）→ 存在性/版本/归属前置校验 → 解压暂存 →
+* 校验 zip 单一顶层目录且名 = `id`、根部 `SKILL.md` 的 frontmatter `name` = `id` →
+* （覆盖时）旧目录挪开 → 移入 → 写 `.market-meta.json`（市场托管凭据，卸载只认它）→
+* 更新 state 的 `version`/`installedAt`。
+* @param options - `{ zipPath, dshHome, id, version }`；`id`/`version` 由调用方从 index 显式传入。
+* @returns `{ id, version, dir, entryCount, fileCount }`。
+* @throws id 形状非法、zip 不存在/结构不符（非单一顶层目录、缺 SKILL.md、`name` 不符）、
+*   同版本重复安装（already-installed）、目标目录归属不符拒绝覆盖、换入失败（旧目录已恢复）
+*   时抛错；暂存目录无论成败都会清理。
+*/
+async function installSkill({ zipPath, dshHome, id, version }) {
+	if (typeof id !== "string" || !PRESET_ID_RE.test(id)) throw new Error(`技能 id 不合法：${JSON.stringify(id)}（须匹配 ${PRESET_ID_RE}）`);
+	if (!existsSync(zipPath)) throw new Error(`zip 不存在：${zipPath}`);
+	const dest = join(dshHome, "skills", id);
+	if (existsSync(dest)) {
+		const recorded = (await readState(dshHome)).skills[id];
+		const installedVersion = recorded !== null && typeof recorded === "object" && typeof recorded.version === "string" && recorded.version !== "" ? recorded.version : (await readOwnedSkillMeta(dest, id))?.version ?? null;
+		if (typeof version === "string" && version !== "" && installedVersion !== null && compareVersions(version, installedVersion) === 0) throw new Error(`技能已安装（already-installed）：${dest} 已是 ${installedVersion}，同版本不覆盖（先卸载再装）`);
+		if (await readOwnedSkillMeta(dest, id) === null) throw new Error(`技能目录已存在且不是本 id 的市场安装（拒绝覆盖）：${dest}（手工目录先卸载/移走再装）`);
+	}
+	const staging = await ensureStageDir(dshHome);
+	try {
+		const entries = await unzipChecked(zipPath, staging);
+		const top = readdirSync(staging, { withFileTypes: true });
+		const topNames = top.map((entry) => entry.name);
+		if (top.length !== 1 || !top[0].isDirectory() || top[0].name !== id) throw new Error(`zip 结构不对：技能包须以 ${id}/ 为唯一顶层目录，实际 [${topNames.join("、")}]`);
+		const pkgRoot = join(staging, id);
+		const skillMd = join(pkgRoot, "SKILL.md");
+		if (!existsSync(skillMd)) throw new Error(`技能包缺 SKILL.md：${zipPath}`);
+		const declared = await readSkillName(skillMd);
+		if (declared !== id) throw new Error(`SKILL.md frontmatter.name 应为 ${JSON.stringify(id)}，实际 ${JSON.stringify(declared)}`);
+		await mkdir(join(dshHome, "skills"), { recursive: true });
+		let backup = null;
+		if (existsSync(dest)) {
+			if (await readOwnedSkillMeta(dest, id) === null) throw new Error(`技能目录已存在且不是本 id 的市场安装（拒绝覆盖）：${dest}（手工目录先卸载/移走再装）`);
+			backup = `${dest}.old-${randomUUID().slice(0, 8)}`;
+			await rename(dest, backup);
+		}
+		try {
+			await moveInto(pkgRoot, dest);
+		} catch (error) {
+			if (backup !== null) {
+				await rm(dest, {
+					recursive: true,
+					force: true
+				}).catch(() => {});
+				try {
+					await rename(backup, dest);
+					backup = null;
+				} catch {}
+			}
+			throw new Error(`写入技能目录失败：${error instanceof Error ? error.message : String(error)}`);
+		}
+		if (backup !== null) {
+			await rm(backup, {
+				recursive: true,
+				force: true
+			}).catch(() => {});
+			backup = null;
+		}
+		const ver = version ?? "0.0.0";
+		const installedAt = (/* @__PURE__ */ new Date()).toISOString();
+		const fileCount = entries.filter((entry) => !entry.norm.endsWith("/")).length;
+		const meta = {
+			id,
+			source: "repo",
+			version: ver,
+			installedAt,
+			fileCount
+		};
+		await writeFile(join(dest, MARKET_META_NAME), `${JSON.stringify(meta, null, 2)}\n`);
+		const state = await readState(dshHome);
+		state.skills[id] = {
+			id,
+			version: ver,
+			installedAt,
+			dirName: id
+		};
+		await writeState(dshHome, state);
+		return {
+			id,
+			version: ver,
+			dir: dest,
+			entryCount: entries.length,
+			fileCount
+		};
+	} finally {
+		await rm(staging, {
+			recursive: true,
+			force: true
+		});
+	}
+}
+/**
+* 调整一个已安装工具的 scope：移除的预设删块，新增的预设注入块，更新 state。
+* @param options - `{ toolId, scope, dshHome, appRoot }`。
+* @returns `{ toolId, scope, added, removed }`。
+* @throws 工具未安装、新增预设不在用户根时抛错（先校验后动文件）。
+*/
+async function setScope({ toolId, scope, dshHome, appRoot }) {
+	if (!appRoot) throw new Error("setScope 需要 appRoot（重新解析 mount 用）");
+	const state = await readState(dshHome);
+	const entry = state.tools[toolId];
+	if (!entry) throw new Error(`工具未安装（state 无记录）：${toolId}`);
+	const nextIds = uniqueScopeIds(scope);
+	const added = nextIds.filter((id) => !(entry.scope ?? []).includes(id));
+	const removed = (entry.scope ?? []).filter((id) => !nextIds.includes(id));
+	const addedFiles = added.map((id) => userPresetFile(dshHome, id));
+	const builtin = entry.builtin === true;
+	const manifestPath = join(dshHome, ".bobo-market", "tools", entry.dir, "manifest.yml");
+	if (!existsSync(manifestPath)) throw new Error(`工具安装目录缺 manifest.yml：${manifestPath}（目录被手删过？先卸载再重装）`);
+	const mounts = parseManifest(await readFile(manifestPath, "utf8")).mount.map((mount) => ({
+		id: mount.id,
+		url: resolveMountUrl(mount.name, {
+			builtin,
+			appRoot,
+			dshHome,
+			dir: entry.dir
+		})
+	}));
+	for (const id of removed) {
+		const file = join(dshHome, ".agent-presets", id, "agent.cordis.yml");
+		if (!existsSync(file)) continue;
+		const { text: cleaned, removed: count } = removeManagedBlocks(await readFile(file, "utf8"), toolId);
+		if (count > 0) await writeFile(file, cleaned);
+	}
+	for (const file of addedFiles) await writeFile(file, injectManagedBlock(await readFile(file, "utf8"), toolId, entry.version, mounts));
+	entry.scope = nextIds;
+	await writeState(dshHome, state);
+	return {
+		toolId,
+		scope: nextIds,
+		added,
+		removed
+	};
+}
+/**
+* 卸载预设：只删 `<dshHome>/.agent-presets/<id>` 整个目录 + state 条目。
+*
+* 预设目录里的托管块随目录一起消失；引用它的工具在 state 里的 scope 同步剔除该 id
+* （工具本身与它的其他预设块不动）。
+* @param options - `{ id, dshHome }`。
+* @returns `{ id, toolsAdjusted }`（被剔除 scope 的工具 id 列表）。
+* @throws id 形状非法、或预设未安装时抛错。
+*/
+async function uninstallPreset({ id, dshHome }) {
+	if (typeof id !== "string" || !PRESET_ID_RE.test(id)) throw new Error(`预设 id 不合法：${JSON.stringify(id)}（须匹配 ${PRESET_ID_RE}）`);
+	const dir = join(dshHome, ".agent-presets", id);
+	if (!existsSync(dir)) throw new Error(`预设未安装：${id}（${dir} 不存在）`);
+	await rm(dir, {
+		recursive: true,
+		force: true
+	});
+	const state = await readState(dshHome);
+	delete state.presets[id];
+	const toolsAdjusted = [];
+	for (const [toolId, tool] of Object.entries(state.tools)) if (Array.isArray(tool.scope) && tool.scope.includes(id)) {
+		tool.scope = tool.scope.filter((presetId) => presetId !== id);
+		toolsAdjusted.push(toolId);
+	}
+	await writeState(dshHome, state);
+	return {
+		id,
+		toolsAdjusted
+	};
+}
+/**
+* 卸载工具：从**所有**用户根预设删它的托管块 → 删 `<dshHome>/.bobo-market/tools/<dir>` → 删 state 条目。
+* @param options - `{ id, dshHome }`。
+* @returns `{ id, dir, blocksRemoved }`。
+* @throws id 在 state 无记录（未安装）时抛错。
+*/
+async function uninstallTool({ id, dshHome }) {
+	const state = await readState(dshHome);
+	const entry = state.tools[id];
+	if (!entry) throw new Error(`工具未安装（state 无记录）：${id}`);
+	let blocksRemoved = 0;
+	const presetRoot = join(dshHome, ".agent-presets");
+	if (existsSync(presetRoot)) for (const child of await readdir(presetRoot, { withFileTypes: true })) {
+		if (!child.isDirectory() || !PRESET_ID_RE.test(child.name)) continue;
+		const file = join(presetRoot, child.name, "agent.cordis.yml");
+		if (!existsSync(file)) continue;
+		const { text: cleaned, removed } = removeManagedBlocks(await readFile(file, "utf8"), id);
+		if (removed > 0) {
+			await writeFile(file, cleaned);
+			blocksRemoved += removed;
+		}
+	}
+	const dir = join(dshHome, ".bobo-market", "tools", entry.dir);
+	if (existsSync(dir)) await rm(dir, {
+		recursive: true,
+		force: true
+	});
+	delete state.tools[id];
+	await writeState(dshHome, state);
+	return {
+		id,
+		dir: entry.dir,
+		blocksRemoved
+	};
+}
+/**
+* 卸载技能：只删带 `.market-meta.json` 且其中 `id` 匹配的 `<dshHome>/skills/<dirName>/`。
+*
+* `.market-meta.json` 是「这个目录是市场装的」的凭据：手工放进技能根的目录没有它
+* （或 id 不符），一律抛 notManaged 拒绝从市场卸——技能库里手工技能归技能库设置页管。
+*
+* id 形态两种，目录定位规则不同：
+*   - 普通 id（与预设 id 同形，M1 的仓库安装）：dirName 缺省取 id 本身，state 有
+*     记录时以记录的 `dirName` 为准；
+*   - 市场 id（`clawhub:<slug>` / `skillhub:<slug>`，M2）：**必须**先在 state skills
+*     桶里查到该 id 的 `dirName`，查不到直接 notManaged——slug 可能含大写而目录名
+*     是小写消毒结果，猜出来的目录不该被删。
+* 两种形态最终都要过同一道校验：目录里的 `.market-meta.json` 的 `id` 必须等于入参 id。
+* @param options - `{ id, dshHome }`。
+* @returns `{ id, dirName }`。
+* @throws id 形状非法、市场 id 在 state 无记录、目录不存在（未安装）、目录缺
+*   `.market-meta.json` 或其中 `id` 不符（notManaged）时抛错；删除后清掉 state 条目。
+*/
+async function uninstallSkill({ id, dshHome }) {
+	const plain = typeof id === "string" && PRESET_ID_RE.test(id);
+	const market = isMarketSkillId(id);
+	if (!plain && !market) throw new Error(`技能 id 不合法：${JSON.stringify(id)}（须匹配 ${PRESET_ID_RE} 或 clawhub:/skillhub: 市场 id）`);
+	const state = await readState(dshHome);
+	const recorded = state.skills[id];
+	const dirName = (recorded !== null && typeof recorded === "object" && typeof recorded.dirName === "string" && SKILL_DIR_RE.test(recorded.dirName) ? recorded.dirName : void 0) ?? (plain ? id : void 0);
+	if (dirName === void 0) throw new Error(`非市场安装的技能（notManaged）：state 里没有 ${id} 的安装记录，拒绝从市场卸载`);
+	const dir = join(dshHome, "skills", dirName);
+	if (!existsSync(dir)) throw new Error(`技能未安装：${id}（${dir} 不存在）`);
+	let managed;
+	try {
+		managed = JSON.parse(await readFile(join(dir, ".market-meta.json"), "utf8"));
+	} catch {
+		managed = null;
+	}
+	if (managed === null || typeof managed !== "object" || managed.id !== id) throw new Error(`非市场安装的技能（notManaged）：${dir} 缺 .market-meta.json 或 id 不符，拒绝从市场卸载`);
+	await rm(dir, {
+		recursive: true,
+		force: true
+	});
+	delete state.skills[id];
+	await writeState(dshHome, state);
+	return {
+		id,
+		dirName
+	};
+}
+/** 首启播种标记的文件名，落在 `<dshHome>/.agent-presets/` 下（desktop/seed-presets.js 写）。 */
+const SEED_MARKER_NAME = ".seeded.json";
+/**
+* 读首启播种标记里记着的预设 id。
+*
+* 这个文件是「随包内置」的唯一凭据：播种不写 state.json，所以只靠 state 分不出
+* 「随包带的」和「仓库装的」。标记缺失或损坏一律按「没播种过」处理——那只会让
+* 内置预设退化成可卸载的普通条目，不影响安装链路本身。
+* @param dshHome - dsh 用户根。
+* @returns 随包播种进用户根的预设 id。
+*/
+async function readSeededPresetIds(dshHome) {
+	try {
+		const parsed = JSON.parse(await readFile(join(dshHome, ".agent-presets", SEED_MARKER_NAME), "utf8"));
+		if (parsed === null || typeof parsed !== "object" || parsed.presets === null || typeof parsed.presets !== "object") return /* @__PURE__ */ new Set();
+		return new Set(Object.keys(parsed.presets));
+	} catch {
+		return /* @__PURE__ */ new Set();
+	}
+}
+/**
+* 合并扫描 `.agent-presets`、`.bobo-market/tools` 与 state.json 的安装清单。
+* 磁盘是「装没装」的真相源；state 提供版本/scope 等元数据；
+* 只在 state 里出现而磁盘已缺失的条目标 `missing: true`。
+*
+* 预设多带一个 `builtin`：在播种标记里、且没有 state 记录 = 随包带的那份
+* （仓库装过就会写 state，此后按普通条目对待）。
+*
+* `skills` 只认 state 的 skills 桶（市场视角的「已装」）：手工放进技能根的技能由
+* 技能库设置页管，不混进插件仓库列表；state 有记录但目录已被手删的按未装处理
+* （脏记录留在 state，读操作不写盘，下次安装会覆盖它）。桶里两种 id 都认：普通
+* id（仓库安装）与 `clawhub:/skillhub:` 市场 id（M2）；`dirName` 必须过
+* {@link SKILL_DIR_RE} 才被采用，防止手改的 state 指向越权路径。
+* @param options - `{ dshHome }`。
+* @returns `{ presets, tools, skills, categories }`。
+*/
+async function listInstalled({ dshHome }) {
+	const state = await readState(dshHome);
+	const seeded = await readSeededPresetIds(dshHome);
+	const presets = [];
+	const seenPresets = /* @__PURE__ */ new Set();
+	const presetRoot = join(dshHome, ".agent-presets");
+	if (existsSync(presetRoot)) {
+		const children = await readdir(presetRoot, { withFileTypes: true });
+		for (const child of children.slice().sort((a, b) => a.name.localeCompare(b.name))) {
+			if (!child.isDirectory() || !PRESET_ID_RE.test(child.name)) continue;
+			seenPresets.add(child.name);
+			const meta = state.presets[child.name] ?? {};
+			presets.push({
+				id: child.name,
+				dir: join(presetRoot, child.name),
+				hasComposition: existsSync(join(presetRoot, child.name, "agent.cordis.yml")),
+				version: meta.version ?? null,
+				installedAt: meta.installedAt ?? null,
+				inState: meta.version !== void 0,
+				builtin: seeded.has(child.name) && meta.version === void 0
+			});
+		}
+	}
+	for (const [id, meta] of Object.entries(state.presets)) {
+		if (seenPresets.has(id)) continue;
+		presets.push({
+			id,
+			dir: join(presetRoot, id),
+			hasComposition: false,
+			version: meta.version ?? null,
+			installedAt: meta.installedAt ?? null,
+			inState: true,
+			missing: true
+		});
+	}
+	const tools = [];
+	const seenTools = /* @__PURE__ */ new Set();
+	const toolRoot = join(dshHome, ".bobo-market", "tools");
+	if (existsSync(toolRoot)) {
+		const children = await readdir(toolRoot, { withFileTypes: true });
+		for (const child of children.slice().sort((a, b) => a.name.localeCompare(b.name))) {
+			if (!child.isDirectory()) continue;
+			const manifestPath = join(toolRoot, child.name, "manifest.yml");
+			if (!existsSync(manifestPath)) continue;
+			let manifest;
+			try {
+				manifest = parseManifest(await readFile(manifestPath, "utf8"));
+			} catch {
+				manifest = null;
+			}
+			const toolId = manifest?.id ?? child.name;
+			seenTools.add(toolId);
+			const meta = state.tools[toolId] ?? {};
+			tools.push({
+				id: toolId,
+				dir: child.name,
+				path: join(toolRoot, child.name),
+				version: manifest?.version ?? meta.version ?? null,
+				builtin: manifest?.builtin === "true",
+				scope: meta.scope ?? [],
+				inState: meta.dir !== void 0,
+				manifestBroken: manifest === null
+			});
+		}
+	}
+	for (const [id, meta] of Object.entries(state.tools)) {
+		if (seenTools.has(id)) continue;
+		tools.push({
+			id,
+			dir: meta.dir,
+			path: join(toolRoot, meta.dir ?? ""),
+			version: meta.version ?? null,
+			builtin: meta.builtin ?? null,
+			scope: meta.scope ?? [],
+			inState: true,
+			missing: true
+		});
+	}
+	const skills = [];
+	const skillsRoot = join(dshHome, "skills");
+	for (const id of Object.keys(state.skills).sort((a, b) => a.localeCompare(b))) {
+		const meta = state.skills[id];
+		if (!PRESET_ID_RE.test(id) && !isMarketSkillId(id)) continue;
+		const fallbackDir = PRESET_ID_RE.test(id) ? id : void 0;
+		const dirName = meta !== null && typeof meta === "object" && typeof meta.dirName === "string" && SKILL_DIR_RE.test(meta.dirName) ? meta.dirName : fallbackDir;
+		if (dirName === void 0) continue;
+		const dir = join(skillsRoot, dirName);
+		if (!existsSync(dir)) continue;
+		skills.push({
+			id,
+			dir,
+			dirName,
+			version: meta.version ?? null,
+			installedAt: meta.installedAt ?? null,
+			inState: true,
+			...typeof meta.source === "string" ? { source: meta.source } : {}
+		});
+	}
+	return {
+		presets,
+		tools,
+		skills,
+		categories: state.categories
+	};
+}
+/**
+* 拆一个版本串：核心数字段 + 预发布后缀（`-` 之后整段）。
+* @param version - 版本串；`null`/`undefined` 按空串处理，前导 `v`/`V` 去掉。
+* @returns `{ numbers, prerelease }`；核心段非数字的部分按 0 计。
+*/
+function versionParts(version) {
+	const [core = "", ...rest] = String(version ?? "").trim().replace(/^[vV]/, "").split("-");
+	return {
+		numbers: core.split(".").map((segment) => {
+			const match = /^\d+/.exec(segment);
+			return match === null ? 0 : Number(match[0]);
+		}),
+		prerelease: rest.join("-")
+	};
+}
+/**
+* 简单 semver 比较：逐段数值比，段数少的按 0 补齐；同核心时**无预发布 > 有预发布**。
+*
+* 只做「有没有新版本」这一个判断，不实现完整的 SemVer（不比预发布标识符的
+* 点分权重、不支持 build 元数据）——市场包由 `scripts/build_market.py` 打版本，
+* 全部落在数值主版本 + 可选 `-rc.N` 的形态内。
+* @param a - 左版本。
+* @param b - 右版本。
+* @returns `a < b` 为 `-1`，`a > b` 为 `1`，相等为 `0`。
+*/
+function compareVersions(a, b) {
+	const left = versionParts(a);
+	const right = versionParts(b);
+	const length = Math.max(left.numbers.length, right.numbers.length);
+	for (let i = 0; i < length; i += 1) {
+		const l = left.numbers[i] ?? 0;
+		const r = right.numbers[i] ?? 0;
+		if (l !== r) return l < r ? -1 : 1;
+	}
+	if (left.prerelease === right.prerelease) return 0;
+	if (left.prerelease === "") return 1;
+	if (right.prerelease === "") return -1;
+	return left.prerelease < right.prerelease ? -1 : 1;
+}
+/**
+* 单条的上架状态。**判据是「有没有安装记录」，不是「版本号读没读到」**：
+* 首启播种进来的内置预设盘上有、state 里没有版本，按版本判会把它误报成 `available`，
+* 于是装上一年也显示「可安装」，还会从「插件管理」里消失。
+* @param installed - 盘上或 state 里有这条安装记录。
+* @param indexVersion - 目录里的版本，目录无此条时为 `null`。
+* @param installedVersion - 已装版本；装了但读不到版本时为 `null`。
+* @returns `'available' | 'installed' | 'update-available'`。
+*/
+function statusOf(installed, indexVersion, installedVersion) {
+	if (!installed) return "available";
+	if (indexVersion === null || indexVersion === void 0) return "installed";
+	if (installedVersion === null || installedVersion === void 0) return "installed";
+	return compareVersions(indexVersion, installedVersion) > 0 ? "update-available" : "installed";
+}
+/**
+* 把一个目录条目与同 id 的本地安装记录拼成 UI 要的一行。
+* `version` 取目录版本，目录没有该条时退回盘上版本。
+* @param fields - `{ ns, indexEntry, installedItem, category }`；`indexEntry` 可为 `null`（仅本地）。
+* @returns 见阶段 D 远端 `list()` 的条目字段；`builtin`/`scope` 只有工具才带，`category` 空值省略。
+*/
+function buildRow({ ns, indexEntry, installedItem, category }) {
+	const id = indexEntry?.id ?? installedItem?.id;
+	if (typeof id !== "string" || id === "") throw new Error("合并结果缺条目 id");
+	const installedVersion = installedItem?.version ?? null;
+	const row = {
+		ns,
+		id,
+		name: indexEntry?.name ?? id,
+		description: indexEntry?.description ?? "",
+		version: indexEntry?.version ?? installedItem?.version ?? null,
+		tags: Array.isArray(indexEntry?.tags) ? indexEntry.tags : [],
+		requires: Array.isArray(indexEntry?.requires) ? indexEntry.requires : [],
+		sha256: indexEntry?.sha256 ?? null,
+		size: indexEntry?.size ?? null,
+		status: statusOf(installedItem !== null && installedItem !== void 0, indexEntry?.version ?? null, installedVersion),
+		installedVersion,
+		detailUrl: indexEntry?.detailUrl ?? null
+	};
+	if (installedItem?.builtin !== void 0 && installedItem.builtin !== null) row.builtin = installedItem.builtin;
+	if (installedItem?.scope !== void 0) row.scope = installedItem.scope;
+	if (typeof category === "string" && category !== "") row.category = category;
+	return row;
+}
+/**
+* 合并三方成一条条 UI 条目：远程 index 逐条在前（保目录顺序），
+* 只在本地出现的安装项补在末尾（目录里被下架/改名的包不该凭空消失）。
+* @param fields - `{ ns, indexEntries, installed, categories }`。
+*   `installed` 是 {@link listInstalled} 的结果；`categories` 是 state 的 `categories` 映射。
+* @returns 条目数组，形状见阶段 D 远端 `list()` 的 JSDoc。
+* @throws index 条目缺 `id`，或 `ns` 不是 `presets`/`tools`/`skills` 时抛错。
+*/
+function mergeListing({ ns, indexEntries, installed, categories = {} }) {
+	if (ns !== "presets" && ns !== "tools" && ns !== "skills") throw new Error(`未知命名空间：${ns}（可选 presets | tools | skills）`);
+	const items = (ns === "presets" ? installed?.presets : ns === "skills" ? installed?.skills : installed?.tools) ?? [];
+	const byId = new Map(items.map((item) => [item.id, item]));
+	const rows = [];
+	const seen = /* @__PURE__ */ new Set();
+	for (const entry of indexEntries ?? []) {
+		if (entry === null || typeof entry !== "object" || typeof entry.id !== "string" || entry.id === "") throw new Error(`目录条目缺 id：${JSON.stringify(entry)}`);
+		seen.add(entry.id);
+		rows.push(buildRow({
+			ns,
+			indexEntry: entry,
+			installedItem: byId.get(entry.id),
+			category: categories[entry.id]
+		}));
+	}
+	for (const item of items) {
+		if (seen.has(item.id)) continue;
+		rows.push(buildRow({
+			ns,
+			indexEntry: null,
+			installedItem: item,
+			category: categories[item.id]
+		}));
+	}
+	return rows;
+}
+/**
+* 一条详情的缓存文件位置：`<id>.md` 存正文，`<id>.json` 存 `{ id, version, fetchedAt }`。
+* @param dshHome - DSH_HOME。
+* @param id - 条目 id。
+* @returns `{ dir, markdown, meta }` 绝对路径。
+* @throws id 形状非法（与预设 id 同形）时抛错，避免拼出越界路径。
+*/
+function detailCachePaths(dshHome, id) {
+	if (typeof id !== "string" || !PRESET_ID_RE.test(id)) throw new Error(`详情缓存 id 不合法：${JSON.stringify(id)}（须匹配 ${PRESET_ID_RE}）`);
+	const dir = join(dshHome, ".bobo-market", "details");
+	return {
+		dir,
+		markdown: join(dir, `${id}.md`),
+		meta: join(dir, `${id}.json`)
+	};
+}
+/**
+* 读详情缓存，**只在缓存记录的键与本次请求的键一致时命中**。
+*
+* 键由调用方拼成「index 版本 + 详情内容哈希」：只改详情不改版本号时键也会变，
+* 陈旧副本不会命中。
+* @param fields - `{ dshHome, id, key }`；`key` 为空串视为永不命中。
+* @returns 缓存的 md 正文；未命中（无缓存、键变了、meta 损坏）返回 `null`。
+*/
+async function readDetailCache({ dshHome, id, key }) {
+	if (typeof key !== "string" || key === "") return null;
+	const { markdown, meta } = detailCachePaths(dshHome, id);
+	let recorded;
+	try {
+		recorded = JSON.parse(await readFile(meta, "utf8"));
+	} catch {
+		return null;
+	}
+	if (recorded === null || typeof recorded !== "object" || recorded.key !== key) return null;
+	try {
+		return await readFile(markdown, "utf8");
+	} catch {
+		return null;
+	}
+}
+/**
+* 写详情缓存（正文与缓存键元数据一起落，先正文后 meta，避免 meta 新正文旧）。
+* @param fields - `{ dshHome, id, key, text }`；`key` = index 版本 + 详情内容哈希。
+* @returns 落盘的正文路径。
+* @throws id 非法，或 `text`/`key` 不是字符串（`key` 还须非空）时抛错。
+*/
+async function writeDetailCache({ dshHome, id, key, text }) {
+	if (typeof text !== "string") throw new Error(`详情正文必须是字符串，实际：${typeof text}`);
+	if (typeof key !== "string" || key === "") throw new Error(`详情缓存键必须是非空字符串，实际：${JSON.stringify(key)}`);
+	const { dir, markdown, meta } = detailCachePaths(dshHome, id);
+	await mkdir(dir, { recursive: true });
+	await writeFile(markdown, text);
+	await writeFile(meta, `${JSON.stringify({
+		id,
+		key,
+		fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+	}, null, 2)}\n`);
+	return markdown;
+}
+/**
+* 写一条本地分类（仅动 state 的 `categories`，不碰安装文件）。
+* @param fields - `{ dshHome, id, category }`；`category` 空串 = 清掉该条分类。
+* @returns `{ id, category }`，清掉后 `category` 为 `null`。
+* @throws id 形状非法、或 `category` 不是字符串时抛错。
+*/
+async function setCategory({ dshHome, id, category }) {
+	if (typeof id !== "string" || !PRESET_ID_RE.test(id) && !isMarketSkillId(id)) throw new Error(`分类 id 不合法：${JSON.stringify(id)}（须匹配 ${PRESET_ID_RE} 或 clawhub:/skillhub: 市场 id）`);
+	if (typeof category !== "string") throw new Error(`分类必须是字符串，实际：${typeof category}`);
+	const trimmed = category.trim();
+	const state = await readState(dshHome);
+	if (trimmed === "") delete state.categories[id];
+	else state.categories[id] = trimmed;
+	await writeState(dshHome, state);
+	return {
+		id,
+		category: trimmed === "" ? null : trimmed
+	};
+}
+/**
+* 用 store（不压缩）方式手工构造一个最小 zip，供自检构造样例与恶意样例。
+* @param files - `[{ name, data }]`，`data` 为 Buffer 或字符串。
+* @returns 完整 zip 字节。
+*/
+function makeStoredZip(files) {
+	const localParts = [];
+	const centralParts = [];
+	let offset = 0;
+	for (const file of files) {
+		const nameBuf = Buffer.from(file.name, "utf8");
+		const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data, "utf8");
+		const crc = (typeof crc32 === "function" ? crc32(data) : 0) >>> 0;
+		const local = Buffer.alloc(30);
+		local.writeUInt32LE(67324752, 0);
+		local.writeUInt16LE(20, 4);
+		local.writeUInt16LE(0, 6);
+		local.writeUInt16LE(0, 8);
+		local.writeUInt16LE(0, 10);
+		local.writeUInt16LE(33, 12);
+		local.writeUInt32LE(crc, 14);
+		local.writeUInt32LE(data.length, 18);
+		local.writeUInt32LE(data.length, 22);
+		local.writeUInt16LE(nameBuf.length, 26);
+		local.writeUInt16LE(0, 28);
+		localParts.push(local, nameBuf, data);
+		const central = Buffer.alloc(46);
+		central.writeUInt32LE(33639248, 0);
+		central.writeUInt16LE(20, 4);
+		central.writeUInt16LE(20, 6);
+		central.writeUInt16LE(0, 8);
+		central.writeUInt16LE(0, 10);
+		central.writeUInt16LE(0, 12);
+		central.writeUInt16LE(33, 14);
+		central.writeUInt32LE(crc, 16);
+		central.writeUInt32LE(data.length, 20);
+		central.writeUInt32LE(data.length, 24);
+		central.writeUInt16LE(nameBuf.length, 28);
+		central.writeUInt32LE(0, 38);
+		central.writeUInt32LE(offset, 42);
+		centralParts.push(central, nameBuf);
+		offset += 30 + nameBuf.length + data.length;
+	}
+	const cd = Buffer.concat(centralParts);
+	const eocd = Buffer.alloc(22);
+	eocd.writeUInt32LE(101010256, 0);
+	eocd.writeUInt16LE(files.length, 8);
+	eocd.writeUInt16LE(files.length, 10);
+	eocd.writeUInt32LE(cd.length, 12);
+	eocd.writeUInt32LE(offset, 16);
+	return Buffer.concat([
+		...localParts,
+		cd,
+		eocd
+	]);
+}
+/**
+* 阶段 C 自检：路径改写、托管块注入幂等、scope 收缩删块、zip slip 拒绝、state 读写往返。
+* 全程只用临时目录，跑完即清；失败时 `process.exitCode = 1`。
+* @returns 已跑完全部用例（结果看打印与退出码）。
+*/
+async function selftest() {
+	const { mkdtemp: mkdtempCb, rm: rmCb, writeFile: writeCb, readFile: readCb, mkdir: mkdirCb, readdir: readdirCb } = await import("node:fs/promises");
+	const { tmpdir } = await import("node:os");
+	let cases = 0;
+	const failures = [];
+	const check = (label, ok, detail) => {
+		cases += 1;
+		if (ok) console.log(`✔ ${label}`);
+		else {
+			const line = `✘ ${label}${detail === void 0 ? "" : ` — ${detail}`}`;
+			failures.push(line);
+			console.log(line);
+		}
+	};
+	const sandbox = await mkdtempCb(join(tmpdir(), "bobo-repo-selftest-"));
+	try {
+		const appRoot = join(sandbox, "BoBo 测试根");
+		const { text: rewritten, rewrites } = rewritePresetPaths([
+			"# 注释行不该被改：name: \"../../plugins/commented.mjs\"",
+			"- id: bobo-common",
+			"  name: '../../plugins/bobo-common.mjs'",
+			"  name: \"../../command-proxy/lib/index.js\"",
+			"  name: ../../bare/row.mjs",
+			"  name: './local.mjs'",
+			"  name: 'file:///E:/already/x.mjs'",
+			"  name: '@deepseek-ai/dsh-persona'",
+			"- id: mcp-dbx",
+			"  name: '@deepseek-ai/dsh-mcp-client'",
+			"    command: ../.venv/Scripts/python.exe",
+			"    args: ['../scripts/dbx_mcp_server.py']",
+			"    cwd: !!js process.env.BOBO_DSH_ROOT || process.cwd()",
+			""
+		].join("\n"), appRoot);
+		const boboRoot = join(appRoot, "dsh", "packages", "bobo");
+		const expectedUrl = pathToFileURL(join(boboRoot, "plugins", "bobo-common.mjs")).href;
+		check("改写：../../plugins → file URL", rewritten.includes(`  name: '${expectedUrl}'`));
+		check("改写：file URL 全是正斜杠", !expectedUrl.includes("\\") && expectedUrl.startsWith("file:///"));
+		check("改写：中文+空格路径 fileURLToPath 无损还原", fileURLToPath(new URL(expectedUrl)) === join(boboRoot, "plugins", "bobo-common.mjs"), `${expectedUrl} → ${fileURLToPath(new URL(expectedUrl))}`);
+		check("改写：双引号行保留引号风格", rewritten.includes(`  name: "${pathToFileURL(join(boboRoot, "command-proxy", "lib", "index.js")).href}"`));
+		check("改写：裸值行改写后带引号", rewritten.includes(`  name: '${pathToFileURL(join(boboRoot, "bare", "row.mjs")).href}'`));
+		check("改写：./ / file: / 包名 行不动", rewritten.includes("  name: './local.mjs'") && rewritten.includes("  name: 'file:///E:/already/x.mjs'") && rewritten.includes("  name: '@deepseek-ai/dsh-persona'"));
+		check("改写：注释行不动", rewritten.includes("# 注释行不该被改：name: \"../../plugins/commented.mjs\""));
+		check("改写：MCP command/args/cwd 行不动", rewritten.includes("    command: ../.venv/Scripts/python.exe") && rewritten.includes("    args: ['../scripts/dbx_mcp_server.py']") && rewritten.includes("    cwd: !!js process.env.BOBO_DSH_ROOT || process.cwd()"));
+		check("改写：产出 3 条记录", rewrites.length === 3, `实际 ${rewrites.length}`);
+		const crlfResult = rewritePresetPaths([
+			"- id: bobo-common",
+			"  name: '../../plugins/bobo-common.mjs'",
+			""
+		].join("\r\n"), appRoot);
+		check("改写：CRLF 文件同样改写且保留 \\r", crlfResult.rewrites.length === 1 && crlfResult.text.includes(`name: '${expectedUrl}'\r`), JSON.stringify(crlfResult.text.slice(0, 120)));
+		const realAppRoot = resolve(fileURLToPath(import.meta.url), "..", "..", "..", "..", "..");
+		const pkgSample = [
+			"- id: preset-x",
+			"  name: '@deepseek-ai/dsh-agent-preset'",
+			"    config:",
+			"      - id: persona",
+			"        name: \"@deepseek-ai/dsh-persona\"",
+			""
+		].join("\n");
+		const pkgResult = rewritePresetPaths(pkgSample, realAppRoot);
+		const pkgUrls = pkgResult.rewrites.map((entry) => entry.to);
+		check("改写：裸包名 → file URL（真根下两条都改）", pkgResult.rewrites.length === 2 && pkgUrls.every((url) => url.startsWith("file:///")), pkgSample);
+		check("改写：裸包名的目标文件真实存在", pkgUrls.length === 2 && pkgUrls.every((url) => existsSync(fileURLToPath(url))), JSON.stringify(pkgUrls));
+		check("改写：裸包名行保留原引号风格", pkgResult.text.includes("name: \"file:///"), pkgResult.text);
+		const home = join(sandbox, "dsh-home");
+		await mkdirCb(home, { recursive: true });
+		const stateFile = join(home, ".bobo-market", "state.json");
+		await mkdirCb(join(home, ".bobo-market"), { recursive: true });
+		await writeCb(stateFile, `${JSON.stringify({
+			presets: {},
+			tools: {},
+			categories: { probe: { kept: 1 } }
+		}, null, 2)}\n`);
+		const presetZip = join(sandbox, "zz-selftest-preset.zip");
+		await writeCb(presetZip, makeStoredZip([
+			{
+				name: "zz-selftest/preset.yml",
+				data: "name: 自检预设\ndescription: 自检\norder: 99\n"
+			},
+			{
+				name: "zz-selftest/agent.cordis.yml",
+				data: [
+					"- id: bobo-common",
+					"  name: '../../plugins/bobo-common.mjs'",
+					"",
+					""
+				].join("\n")
+			},
+			{
+				name: "zz-selftest/decl.yml",
+				data: [
+					"- id: preset-zz-selftest",
+					"  name: '@deepseek-ai/dsh-agent-preset'",
+					"  config:",
+					"    id: zz-selftest",
+					"    plugins:",
+					"      - id: bobo-common",
+					"        name: '../../plugins/bobo-common.mjs'",
+					"",
+					""
+				].join("\n")
+			},
+			{
+				name: "zz-selftest/DETAILS.md",
+				data: "---\nid: zz-selftest\ntype: preset\nversion: 7.7.7\n---\n## 功能定位\n"
+			}
+		]));
+		const presetResult = await installPreset({
+			zipPath: presetZip,
+			dshHome: home,
+			appRoot
+		});
+		check("installPreset：id 从顶层目录推断", presetResult.id === "zz-selftest", presetResult.id);
+		check("installPreset：version 从 DETAILS.md 推断", presetResult.version === "7.7.7", presetResult.version);
+		check("installPreset：结构落盘", existsSync(join(home, ".agent-presets", "zz-selftest", "preset.yml")) && existsSync(join(home, ".agent-presets", "zz-selftest", "agent.cordis.yml")));
+		check("installPreset：decl.yml 一并落盘", existsSync(join(home, ".agent-presets", "zz-selftest", "decl.yml")));
+		const installedComp = await readCb(join(home, ".agent-presets", "zz-selftest", "agent.cordis.yml"), "utf8");
+		check("installPreset：相对行已改写成 file URL", installedComp.includes(`name: '${pathToFileURL(join(boboRoot, "plugins", "bobo-common.mjs")).href}'`) && !installedComp.includes("../../"));
+		const installedDecl = await readCb(join(home, ".agent-presets", "zz-selftest", "decl.yml"), "utf8");
+		check("installPreset：decl.yml 的相对行同样改写", installedDecl.includes(`name: '${pathToFileURL(join(boboRoot, "plugins", "bobo-common.mjs")).href}'`) && !installedDecl.includes("../../"), installedDecl.slice(0, 200));
+		check("installPreset：decl.yml 的裸包名不被误改", installedDecl.includes("@deepseek-ai/dsh-agent-preset"));
+		const legacyZip = join(sandbox, "zz-legacy-preset.zip");
+		await writeCb(legacyZip, makeStoredZip([{
+			name: "zz-legacy/preset.yml",
+			data: "name: 旧包\ndescription: x\norder: 1\n"
+		}, {
+			name: "zz-legacy/agent.cordis.yml",
+			data: "- id: bobo-common\n"
+		}]));
+		let legacyErr = "";
+		try {
+			await installPreset({
+				zipPath: legacyZip,
+				dshHome: home,
+				appRoot
+			});
+		} catch (err) {
+			legacyErr = String(err?.message ?? err);
+		}
+		check("installPreset：缺 decl.yml 的旧包被拒绝", /decl\.yml/.test(legacyErr), legacyErr);
+		const toolZip = join(sandbox, "bobo-zztool.zip");
+		await writeCb(toolZip, makeStoredZip([
+			{
+				name: "bobo-zztool/manifest.yml",
+				data: [
+					"id: bobo-zztool",
+					"dir: bobo-zztool",
+					"name: 自检工具",
+					"description: 自检用最小工具包。",
+					"version: 1.2.3",
+					"publish: false",
+					"builtin: false",
+					"minAppVersion: 2.1.1",
+					"mount:",
+					"  - id: zz-hello",
+					"    name: \"@@APP@@/lib/hello.js\"",
+					"defaultScope: all",
+					""
+				].join("\n")
+			},
+			{
+				name: "bobo-zztool/package.json",
+				data: "{\"name\":\"bobo-zztool\",\"type\":\"module\",\"version\":\"1.2.3\"}\n"
+			},
+			{
+				name: "bobo-zztool/lib/hello.js",
+				data: "export const name = 'zz-hello'\nexport function apply() {}\n"
+			}
+		]));
+		const toolResult = await installTool({
+			zipPath: toolZip,
+			dshHome: home,
+			appRoot,
+			scope: ["zz-selftest"]
+		});
+		check("installTool：id/dir/version/builtin 解析", toolResult.id === "bobo-zztool" && toolResult.dir === "bobo-zztool" && toolResult.version === "1.2.3" && toolResult.builtin === false);
+		const helloUrl = pathToFileURL(join(home, ".bobo-market", "tools", "bobo-zztool", "lib", "hello.js")).href;
+		check("installTool：@@APP@@ 解析进安装目录", toolResult.mounts[0].url === helloUrl, toolResult.mounts[0].url);
+		const compAfterTool = await readCb(join(home, ".agent-presets", "zz-selftest", "agent.cordis.yml"), "utf8");
+		check("installTool：托管块注入（含 file URL 行）", compAfterTool.includes(`# --- repo-managed: tool bobo-zztool v1.2.3 ---`) && compAfterTool.includes(`  name: '${helloUrl}'`) && compAfterTool.includes(BLOCK_END));
+		await installTool({
+			zipPath: toolZip,
+			dshHome: home,
+			appRoot,
+			scope: ["zz-selftest"]
+		});
+		const blockCount = (await readCb(join(home, ".agent-presets", "zz-selftest", "agent.cordis.yml"), "utf8")).split(`# --- repo-managed: tool bobo-zztool `).length - 1;
+		check("托管块注入幂等：两次安装只留一份块", blockCount === 1, `实际 ${blockCount} 份`);
+		await setScope({
+			toolId: "bobo-zztool",
+			scope: [],
+			dshHome: home,
+			appRoot
+		});
+		const compAfterShrink = await readCb(join(home, ".agent-presets", "zz-selftest", "agent.cordis.yml"), "utf8");
+		check("scope 收缩：块被删除", !compAfterShrink.includes("repo-managed: tool bobo-zztool") && compAfterShrink.includes("../../plugins/bobo-common.mjs") === false, compAfterShrink.trim());
+		const stateAfterShrink = JSON.parse(await readCb(stateFile, "utf8"));
+		check("scope 收缩：state.scope 更新为空数组", JSON.stringify(stateAfterShrink.tools["bobo-zztool"].scope) === "[]", JSON.stringify(stateAfterShrink.tools["bobo-zztool"].scope));
+		for (const evil of [
+			"../evil.txt",
+			"/abs-evil.txt",
+			"C:\\drive-evil.txt",
+			"nested/../../deep-evil.txt"
+		]) {
+			const evilZip = join(sandbox, `evil-${Buffer.from(evil).toString("hex")}.zip`);
+			await writeCb(evilZip, makeStoredZip([
+				{
+					name: "zz-selftest/preset.yml",
+					data: "name: x\ndescription: x\n"
+				},
+				{
+					name: "zz-selftest/agent.cordis.yml",
+					data: ""
+				},
+				{
+					name: evil,
+					data: "pwned"
+				}
+			]));
+			let error = null;
+			try {
+				await installPreset({
+					zipPath: evilZip,
+					dshHome: home,
+					appRoot,
+					id: "zz-evil"
+				});
+			} catch (caught) {
+				error = caught;
+			}
+			check(`zip slip 拒绝：${evil}`, error !== null && /zip slip|非法条目名/.test(String(error?.message)), error ? error.message : "竟然装成功了");
+		}
+		check("zip slip：目标目录外没有落下 evil 文件", !existsSync(join(home, "evil.txt")) && !existsSync(join(home, ".agent-presets", "evil.txt")) && !existsSync(join(home, "deep-evil.txt")));
+		let scopeError = null;
+		try {
+			await installTool({
+				zipPath: toolZip,
+				dshHome: home,
+				appRoot,
+				scope: ["not-installed-here"]
+			});
+		} catch (caught) {
+			scopeError = caught;
+		}
+		check("非法 scope 拒绝（只允许用户根已安装预设）", scopeError !== null && /用户根/.test(String(scopeError?.message)), scopeError?.message);
+		const stateFinal = JSON.parse(await readCb(stateFile, "utf8"));
+		check("state 往返：categories 原样保留", stateFinal.categories?.probe?.kept === 1, JSON.stringify(stateFinal.categories));
+		check("state 往返：presets/tools 键齐全", stateFinal.presets["zz-selftest"]?.version === "7.7.7" && stateFinal.tools["bobo-zztool"]?.dir === "bobo-zztool");
+		const listed = await listInstalled({ dshHome: home });
+		check("listInstalled：盘上与 state 合并", listed.presets.some((item) => item.id === "zz-selftest" && item.version === "7.7.7") && listed.tools.some((item) => item.id === "bobo-zztool" && item.scope.length === 0) && listed.categories?.probe?.kept === 1, JSON.stringify(listed));
+		await setScope({
+			toolId: "bobo-zztool",
+			scope: ["zz-selftest"],
+			dshHome: home,
+			appRoot
+		});
+		const unTool = await uninstallTool({
+			id: "bobo-zztool",
+			dshHome: home
+		});
+		const compAfterUninstallTool = await readCb(join(home, ".agent-presets", "zz-selftest", "agent.cordis.yml"), "utf8");
+		check("uninstallTool：块全清 + 目录删除", unTool.blocksRemoved === 1 && !compAfterUninstallTool.includes("repo-managed: tool bobo-zztool") && !existsSync(join(home, ".bobo-market", "tools", "bobo-zztool")));
+		const unPreset = await uninstallPreset({
+			id: "zz-selftest",
+			dshHome: home
+		});
+		const stateAfterUninstall = JSON.parse(await readCb(stateFile, "utf8"));
+		check("uninstallPreset：目录与 state 清除", unPreset.id === "zz-selftest" && !existsSync(join(home, ".agent-presets", "zz-selftest")) && stateAfterUninstall.presets["zz-selftest"] === void 0);
+		check("uninstallPreset：引用它的工具 scope 被剔除", stateAfterUninstall.tools === void 0 || stateAfterUninstall.tools["bobo-zztool"] === void 0);
+		const listedAfter = await listInstalled({ dshHome: home });
+		check("卸载后 listInstalled 为空", listedAfter.presets.length === 0 && listedAfter.tools.length === 0 && listedAfter.categories?.probe?.kept === 1);
+		check("版本比较：逐段数值比", compareVersions("1.0.0", "1.0.1") === -1 && compareVersions("1.0.1", "1.0.0") === 1 && compareVersions("1.0.0", "1.0.0") === 0);
+		check("版本比较：段数少的按 0 补齐", compareVersions("1.0", "1.0.0") === 0 && compareVersions("1", "1.0.0") === 0);
+		check("版本比较：不按字符串比（2 < 10）", compareVersions("2.0.0", "10.0.0") === -1);
+		check("版本比较：前导 v 忽略", compareVersions("v2.0.0", "2.0.0") === 0);
+		check("版本比较：预发布小于正式", compareVersions("1.0.0-rc.1", "1.0.0") === -1 && compareVersions("1.0.0", "1.0.0-rc.2") === 1);
+		check("版本比较：null/空串按 0 段", compareVersions(null, "0.0.0") === 0 && compareVersions("", "1.0.0") === -1);
+		const mergeInstalled = {
+			presets: [
+				{
+					id: "crawl",
+					version: "1.0.0"
+				},
+				{
+					id: "stale",
+					version: "0.9.0"
+				},
+				{
+					id: "local-only",
+					version: "3.2.1"
+				},
+				{
+					id: "seeded",
+					builtin: true
+				}
+			],
+			tools: [{
+				id: "bobo-crawl-tool",
+				dir: "bobo-crawl-tool",
+				version: "1.0.0",
+				builtin: false,
+				scope: ["crawl"]
+			}],
+			categories: { crawl: "采集" }
+		};
+		const merged = mergeListing({
+			ns: "presets",
+			indexEntries: [
+				{
+					id: "crawl",
+					name: "采集模式",
+					description: "抓网页",
+					version: "1.0.0",
+					tags: ["采集"],
+					requires: [],
+					sha256: "ab",
+					size: 10,
+					detailUrl: "http://x/crawl.md"
+				},
+				{
+					id: "standard",
+					name: "标准模式",
+					description: "编码",
+					version: "1.1.0",
+					tags: [],
+					requires: [],
+					sha256: "cd",
+					size: 20,
+					detailUrl: "http://x/standard.md"
+				},
+				{
+					id: "stale",
+					name: "旧版",
+					description: "",
+					version: "1.0.0",
+					tags: [],
+					requires: [],
+					sha256: "ef",
+					size: 30,
+					detailUrl: "http://x/stale.md"
+				},
+				{
+					id: "seeded",
+					name: "随包预设",
+					description: "",
+					version: "1.0.0",
+					tags: [],
+					requires: [],
+					sha256: "gg",
+					size: 40,
+					detailUrl: "http://x/seeded.md"
+				}
+			],
+			installed: mergeInstalled,
+			categories: mergeInstalled.categories
+		});
+		check("合并：未安装的目录项 status=available", merged.find((row) => row.id === "standard")?.status === "available" && merged.find((row) => row.id === "standard")?.installedVersion === null);
+		check("合并：已装同版本 status=installed", merged.find((row) => row.id === "crawl")?.status === "installed");
+		check("合并：目录版本更高 status=update-available", merged.find((row) => row.id === "stale")?.status === "update-available" && merged.find((row) => row.id === "stale")?.installedVersion === "0.9.0" && merged.find((row) => row.id === "stale")?.version === "1.0.0");
+		check("合并：装了但读不到版本 → installed 而不是 available", merged.find((row) => row.id === "seeded")?.status === "installed" && merged.find((row) => row.id === "seeded")?.installedVersion === null && merged.find((row) => row.id === "seeded")?.version === "1.0.0" && merged.find((row) => row.id === "seeded")?.builtin === true);
+		check("合并：无目录项且无版本 → installed", mergeListing({
+			ns: "presets",
+			indexEntries: [],
+			installed: mergeInstalled,
+			categories: {}
+		}).find((row) => row.id === "seeded")?.status === "installed");
+		check("合并：仅本地条目补在末尾", merged.at(-1)?.id === "local-only" && merged.at(-1)?.ns === "presets" && merged.at(-1)?.version === "3.2.1" && merged.at(-1)?.status === "installed" && merged.at(-1)?.detailUrl === null);
+		check("合并：目录顺序保持 + 分类透出", merged.map((row) => row.id).join(",") === "crawl,standard,stale,seeded,local-only" && merged[0]?.category === "采集" && merged[1]?.category === void 0);
+		check("合并：字段齐全", merged[0]?.name === "采集模式" && merged[0]?.description === "抓网页" && merged[0]?.tags.length === 1 && merged[0]?.requires.length === 0 && merged[0]?.sha256 === "ab" && merged[0]?.size === 10 && merged[0]?.detailUrl === "http://x/crawl.md");
+		const mergedTools = mergeListing({
+			ns: "tools",
+			indexEntries: [],
+			installed: mergeInstalled,
+			categories: {}
+		});
+		check("合并：工具透出 builtin/scope", mergedTools.length === 1 && mergedTools[0]?.builtin === false && JSON.stringify(mergedTools[0]?.scope) === "[\"crawl\"]");
+		let mergeError = null;
+		try {
+			mergeListing({
+				ns: "presets",
+				indexEntries: [{ name: "没 id" }],
+				installed: mergeInstalled,
+				categories: {}
+			});
+		} catch (caught) {
+			mergeError = caught;
+		}
+		check("合并：目录条目缺 id 拒绝", mergeError !== null && /缺 id/.test(String(mergeError?.message)));
+		await writeDetailCache({
+			dshHome: home,
+			id: "zz-selftest",
+			key: "1.0.0#aaa",
+			text: "## 功能定位\n旧正文\n"
+		});
+		check("详情缓存：同键命中", await readDetailCache({
+			dshHome: home,
+			id: "zz-selftest",
+			key: "1.0.0#aaa"
+		}) === "## 功能定位\n旧正文\n");
+		check("详情缓存：键变了就失效（版本变）", await readDetailCache({
+			dshHome: home,
+			id: "zz-selftest",
+			key: "1.0.1#aaa"
+		}) === null);
+		check("详情缓存：键变了就失效（只改详情内容）", await readDetailCache({
+			dshHome: home,
+			id: "zz-selftest",
+			key: "1.0.0#bbb"
+		}) === null);
+		check("详情缓存：空键永不命中", await readDetailCache({
+			dshHome: home,
+			id: "zz-selftest",
+			key: ""
+		}) === null);
+		check("详情缓存：无缓存的 id 不命中", await readDetailCache({
+			dshHome: home,
+			id: "bobo-nope",
+			key: "1.0.0#aaa"
+		}) === null);
+		await writeDetailCache({
+			dshHome: home,
+			id: "zz-selftest",
+			key: "1.0.1#ccc",
+			text: "## 功能定位\n新正文\n"
+		});
+		check("详情缓存：重写后旧键不再命中、新键是新正文", await readDetailCache({
+			dshHome: home,
+			id: "zz-selftest",
+			key: "1.0.0#aaa"
+		}) === null && await readDetailCache({
+			dshHome: home,
+			id: "zz-selftest",
+			key: "1.0.1#ccc"
+		}) === "## 功能定位\n新正文\n");
+		let cacheIdError = null;
+		try {
+			detailCachePaths(home, "../escape");
+		} catch (caught) {
+			cacheIdError = caught;
+		}
+		check("详情缓存：id 非法拒绝（防越界）", cacheIdError !== null && /不合法/.test(String(cacheIdError?.message)));
+		const categorySet = await setCategory({
+			dshHome: home,
+			id: "zz-selftest",
+			category: "  采集  "
+		});
+		const afterCategory = JSON.parse(await readCb(stateFile, "utf8"));
+		check("setCategory：写入并 trim", categorySet.category === "采集" && afterCategory.categories["zz-selftest"] === "采集" && afterCategory.categories.probe?.kept === 1);
+		check("setCategory：经 listInstalled.categories 读回", (await listInstalled({ dshHome: home })).categories["zz-selftest"] === "采集");
+		const categoryClear = await setCategory({
+			dshHome: home,
+			id: "zz-selftest",
+			category: ""
+		});
+		const afterClear = JSON.parse(await readCb(stateFile, "utf8"));
+		check("setCategory：空串清掉该条", categoryClear.category === null && afterClear.categories["zz-selftest"] === void 0 && afterClear.categories.probe?.kept === 1);
+		let categoryError = null;
+		try {
+			await setCategory({
+				dshHome: home,
+				id: "../escape",
+				category: "x"
+			});
+		} catch (caught) {
+			categoryError = caught;
+		}
+		check("setCategory：id 非法拒绝", categoryError !== null && /不合法/.test(String(categoryError?.message)));
+		const seededDir = join(home, ".agent-presets", "zz-seeded");
+		await mkdirCb(seededDir, { recursive: true });
+		await writeCb(join(seededDir, "preset.yml"), "name: 自检内置\ndescription: 播种\norder: 1\n");
+		await writeCb(join(seededDir, "agent.cordis.yml"), "- id: zz\n");
+		const markerPath = join(home, ".agent-presets", ".seeded.json");
+		await writeCb(markerPath, `${JSON.stringify({
+			version: "dev",
+			presets: { "zz-seeded": "deadbeef" }
+		}, null, 2)}\n`);
+		const seededRow = (await listInstalled({ dshHome: home })).presets.find((item) => item.id === "zz-seeded");
+		check("listInstalled：播种标记里的预设标 builtin 且版本为 null", seededRow?.builtin === true && seededRow?.version === null && seededRow?.inState === false);
+		const manualDir = join(home, ".agent-presets", "zz-manual");
+		await mkdirCb(manualDir, { recursive: true });
+		await writeCb(join(manualDir, "preset.yml"), "name: 手工放进来的\ndescription: 不在标记里\norder: 2\n");
+		await writeCb(join(manualDir, "agent.cordis.yml"), "- id: zz\n");
+		check("listInstalled：不在标记里的预设不标 builtin", (await listInstalled({ dshHome: home })).presets.find((item) => item.id === "zz-manual")?.builtin === false);
+		await writeCb(markerPath, "{ 这不是 JSON");
+		check("listInstalled：标记损坏不抛错且退化成非内置", (await listInstalled({ dshHome: home })).presets.find((item) => item.id === "zz-seeded")?.builtin === false);
+		const legacyHome = join(sandbox, "dsh-home-legacy");
+		await mkdirCb(join(legacyHome, ".bobo-market"), { recursive: true });
+		await writeCb(join(legacyHome, ".bobo-market", "state.json"), `${JSON.stringify({
+			presets: {},
+			tools: {},
+			categories: { probe: { kept: 1 } }
+		}, null, 2)}\n`);
+		const legacyListed = await listInstalled({ dshHome: legacyHome });
+		check("skills：老 state（无 skills 桶）读侧补默认不抛错", Array.isArray(legacyListed.skills) && legacyListed.skills.length === 0 && legacyListed.categories?.probe?.kept === 1, JSON.stringify(legacyListed.skills));
+		await setCategory({
+			dshHome: legacyHome,
+			id: "zz-skill",
+			category: "采集"
+		});
+		const legacyWritten = JSON.parse(await readCb(join(legacyHome, ".bobo-market", "state.json"), "utf8"));
+		check("skills：老 state 补桶后写回带 skills 且旧数据不丢", typeof legacyWritten.skills === "object" && legacyWritten.skills !== null && legacyWritten.presets["zz-skill"] === void 0 && legacyWritten.categories.probe?.kept === 1 && legacyWritten.categories["zz-skill"] === "采集", JSON.stringify(legacyWritten));
+		const skillZip = join(sandbox, "zz-skill.zip");
+		await writeCb(skillZip, makeStoredZip([{
+			name: "zz-skill/SKILL.md",
+			data: "---\nname: zz-skill\ndescription: 自检技能\n---\n\n# zz-skill\n"
+		}, {
+			name: "zz-skill/references/extra.md",
+			data: "补充材料\n"
+		}]));
+		const skillResult = await installSkill({
+			zipPath: skillZip,
+			dshHome: home,
+			id: "zz-skill",
+			version: "2.1.0"
+		});
+		check("installSkill：id/version/落盘", skillResult.id === "zz-skill" && skillResult.version === "2.1.0" && existsSync(join(home, "skills", "zz-skill", "SKILL.md")) && existsSync(join(home, "skills", "zz-skill", "references", "extra.md")), JSON.stringify(skillResult));
+		const skillMeta = JSON.parse(await readCb(join(home, "skills", "zz-skill", ".market-meta.json"), "utf8"));
+		check("installSkill：写 .market-meta.json（id/source/version/fileCount）", skillMeta.id === "zz-skill" && skillMeta.source === "repo" && skillMeta.version === "2.1.0" && skillMeta.fileCount === 2 && typeof skillMeta.installedAt === "string", JSON.stringify(skillMeta));
+		const stateAfterSkill = JSON.parse(await readCb(stateFile, "utf8"));
+		check("installSkill：state.skills 记录 dirName/version", stateAfterSkill.skills["zz-skill"]?.dirName === "zz-skill" && stateAfterSkill.skills["zz-skill"]?.version === "2.1.0", JSON.stringify(stateAfterSkill.skills));
+		const listedSkill = await listInstalled({ dshHome: home });
+		check("listInstalled：state 驱动的 skills 条目", listedSkill.skills.length === 1 && listedSkill.skills[0]?.id === "zz-skill" && listedSkill.skills[0]?.version === "2.1.0", JSON.stringify(listedSkill.skills));
+		let dupSkillError = null;
+		try {
+			await installSkill({
+				zipPath: skillZip,
+				dshHome: home,
+				id: "zz-skill",
+				version: "2.1.0"
+			});
+		} catch (caught) {
+			dupSkillError = caught;
+		}
+		check("installSkill：重复安装拒绝（already-installed）", dupSkillError !== null && /already-installed/.test(String(dupSkillError?.message)), dupSkillError?.message);
+		const skillZipV2 = join(sandbox, "zz-skill-v2.zip");
+		await writeCb(skillZipV2, makeStoredZip([{
+			name: "zz-skill/SKILL.md",
+			data: "---\nname: zz-skill\ndescription: 自检技能 v2\n---\n\n# zz-skill v2\n"
+		}, {
+			name: "zz-skill/references/extra.md",
+			data: "补充材料 v2\n"
+		}]));
+		const updateSkill = await installSkill({
+			zipPath: skillZipV2,
+			dshHome: home,
+			id: "zz-skill",
+			version: "3.0.0"
+		});
+		const stateAfterUpdate = JSON.parse(await readCb(stateFile, "utf8"));
+		const metaAfterUpdate = JSON.parse(await readCb(join(home, "skills", "zz-skill", ".market-meta.json"), "utf8"));
+		const backupLeft = (await readdirCb(join(home, "skills"))).filter((name) => name.startsWith("zz-skill.old-"));
+		check("installSkill：版本不同走覆盖安装，state 与 meta 的 version 同步到新版", updateSkill.version === "3.0.0" && stateAfterUpdate.skills["zz-skill"]?.version === "3.0.0" && typeof stateAfterUpdate.skills["zz-skill"]?.installedAt === "string" && metaAfterUpdate.version === "3.0.0" && (await readCb(join(home, "skills", "zz-skill", "SKILL.md"), "utf8")).includes("# zz-skill v2") && backupLeft.length === 0, JSON.stringify({
+			updateSkill,
+			state: stateAfterUpdate.skills["zz-skill"],
+			meta: metaAfterUpdate,
+			backupLeft
+		}));
+		let sameVersionError = null;
+		try {
+			await installSkill({
+				zipPath: skillZipV2,
+				dshHome: home,
+				id: "zz-skill",
+				version: "3.0.0"
+			});
+		} catch (caught) {
+			sameVersionError = caught;
+		}
+		check("installSkill：覆盖后同版本再次安装仍拒绝（already-installed）", sameVersionError !== null && /already-installed/.test(String(sameVersionError?.message)), sameVersionError?.message);
+		const handmadeDir = join(home, "skills", "zz-handmade");
+		await mkdirCb(handmadeDir, { recursive: true });
+		await writeCb(join(handmadeDir, "SKILL.md"), "---\nname: zz-handmade\ndescription: 手工放的\n---\n");
+		let manualOverwriteError = null;
+		try {
+			await installSkill({
+				zipPath: skillZip,
+				dshHome: home,
+				id: "zz-handmade",
+				version: "9.9.9"
+			});
+		} catch (caught) {
+			manualOverwriteError = caught;
+		}
+		check("installSkill：无 .market-meta.json 的手工目录拒绝覆盖且内容不动", manualOverwriteError !== null && /拒绝覆盖/.test(String(manualOverwriteError?.message)) && (await readCb(join(handmadeDir, "SKILL.md"), "utf8")).includes("手工放的"), manualOverwriteError?.message);
+		const foreignDir = join(home, "skills", "zz-foreign");
+		await mkdirCb(foreignDir, { recursive: true });
+		await writeCb(join(foreignDir, "SKILL.md"), "---\nname: zz-foreign\ndescription: 别的 id 装的\n---\n");
+		await writeCb(join(foreignDir, ".market-meta.json"), `${JSON.stringify({
+			id: "zz-other",
+			source: "repo",
+			version: "1.0.0",
+			installedAt: "now",
+			fileCount: 1
+		}, null, 2)}\n`);
+		let foreignOverwriteError = null;
+		try {
+			await installSkill({
+				zipPath: skillZip,
+				dshHome: home,
+				id: "zz-foreign",
+				version: "9.9.9"
+			});
+		} catch (caught) {
+			foreignOverwriteError = caught;
+		}
+		check("installSkill：meta 归属他方的目录拒绝覆盖", foreignOverwriteError !== null && /拒绝覆盖/.test(String(foreignOverwriteError?.message)), foreignOverwriteError?.message);
+		const wrongRootZip = join(sandbox, "wrong-root.zip");
+		await writeCb(wrongRootZip, makeStoredZip([{
+			name: "other-skill/SKILL.md",
+			data: "---\nname: other-skill\ndescription: x\n---\n"
+		}]));
+		let rootError = null;
+		try {
+			await installSkill({
+				zipPath: wrongRootZip,
+				dshHome: home,
+				id: "zz-root",
+				version: "1.0.0"
+			});
+		} catch (caught) {
+			rootError = caught;
+		}
+		check("installSkill：非唯一顶层目录 = id 拒绝", rootError !== null && /唯一顶层目录/.test(String(rootError?.message)), rootError?.message);
+		const wrongNameZip = join(sandbox, "wrong-name.zip");
+		await writeCb(wrongNameZip, makeStoredZip([{
+			name: "zz-name/SKILL.md",
+			data: "---\nname: other-name\ndescription: x\n---\n"
+		}]));
+		let nameError = null;
+		try {
+			await installSkill({
+				zipPath: wrongNameZip,
+				dshHome: home,
+				id: "zz-name",
+				version: "1.0.0"
+			});
+		} catch (caught) {
+			nameError = caught;
+		}
+		check("installSkill：frontmatter.name 与 id 不符拒绝", nameError !== null && /frontmatter\.name/.test(String(nameError?.message)), nameError?.message);
+		const evilSkillZip = join(sandbox, "evil-skill.zip");
+		await writeCb(evilSkillZip, makeStoredZip([{
+			name: "zz-evil-skill/SKILL.md",
+			data: "---\nname: zz-evil-skill\ndescription: x\n---\n"
+		}, {
+			name: "../escape-skill.txt",
+			data: "pwned"
+		}]));
+		let skillSlipError = null;
+		try {
+			await installSkill({
+				zipPath: evilSkillZip,
+				dshHome: home,
+				id: "zz-evil-skill",
+				version: "1.0.0"
+			});
+		} catch (caught) {
+			skillSlipError = caught;
+		}
+		check("installSkill：zip slip 拒绝且不落越权文件", skillSlipError !== null && /zip slip|非法条目名/.test(String(skillSlipError?.message)) && !existsSync(join(home, "escape-skill.txt")) && !existsSync(join(home, "skills", "escape-skill.txt")), skillSlipError?.message);
+		const mergedSkills = mergeListing({
+			ns: "skills",
+			indexEntries: [
+				{
+					id: "zz-skill",
+					name: "自检技能",
+					description: "已装同版本",
+					version: "2.1.0",
+					tags: ["工具"],
+					requires: [],
+					sha256: "aa",
+					size: 5,
+					detailUrl: "http://x/s.md"
+				},
+				{
+					id: "zz-new-skill",
+					name: "新技能",
+					description: "未装",
+					version: "1.0.0",
+					tags: [],
+					requires: [],
+					sha256: "bb",
+					size: 6,
+					detailUrl: "http://x/n.md"
+				},
+				{
+					id: "zz-old-skill",
+					name: "旧技能",
+					description: "待更新",
+					version: "3.0.0",
+					tags: [],
+					requires: [],
+					sha256: "cc",
+					size: 7,
+					detailUrl: "http://x/o.md"
+				}
+			],
+			installed: {
+				presets: [],
+				tools: [],
+				skills: [{
+					id: "zz-skill",
+					dir: join(home, "skills", "zz-skill"),
+					dirName: "zz-skill",
+					version: "2.1.0",
+					installedAt: "now",
+					inState: true
+				}, {
+					id: "zz-old-skill",
+					dir: join(home, "skills", "zz-old-skill"),
+					dirName: "zz-old-skill",
+					version: "2.0.0",
+					installedAt: "now",
+					inState: true
+				}],
+				categories: { "zz-skill": "工具" }
+			},
+			categories: { "zz-skill": "工具" }
+		});
+		check("合并 skills：状态机三态（available/installed/update-available）", mergedSkills.find((row) => row.id === "zz-skill")?.status === "installed" && mergedSkills.find((row) => row.id === "zz-new-skill")?.status === "available" && mergedSkills.find((row) => row.id === "zz-old-skill")?.status === "update-available" && mergedSkills.find((row) => row.id === "zz-old-skill")?.installedVersion === "2.0.0", JSON.stringify(mergedSkills.map((row) => [row.id, row.status])));
+		const skillRow = mergedSkills.find((row) => row.id === "zz-skill");
+		check("合并 skills：buildRow 透出 ns/分类且不带工具字段", skillRow?.ns === "skills" && skillRow?.name === "自检技能" && skillRow?.category === "工具" && skillRow?.builtin === void 0 && skillRow?.scope === void 0 && skillRow?.detailUrl === "http://x/s.md" && skillRow?.sha256 === "aa", JSON.stringify(skillRow));
+		let skillNsError = null;
+		try {
+			mergeListing({
+				ns: "skills-x",
+				indexEntries: [],
+				installed: {},
+				categories: {}
+			});
+		} catch (caught) {
+			skillNsError = caught;
+		}
+		check("合并 skills：未知命名空间拒绝", skillNsError !== null && /presets \| tools \| skills/.test(String(skillNsError?.message)));
+		const unSkill = await uninstallSkill({
+			id: "zz-skill",
+			dshHome: home
+		});
+		const stateAfterUninstallSkill = JSON.parse(await readCb(stateFile, "utf8"));
+		check("uninstallSkill：认 meta 后删目录 + 清 state", unSkill.id === "zz-skill" && !existsSync(join(home, "skills", "zz-skill")) && stateAfterUninstallSkill.skills["zz-skill"] === void 0, JSON.stringify(unSkill));
+		const manualSkillDir = join(home, "skills", "zz-manual-skill");
+		await mkdirCb(manualSkillDir, { recursive: true });
+		await writeCb(join(manualSkillDir, "SKILL.md"), "---\nname: zz-manual-skill\ndescription: 手工放的\n---\n");
+		let notManagedError = null;
+		try {
+			await uninstallSkill({
+				id: "zz-manual-skill",
+				dshHome: home
+			});
+		} catch (caught) {
+			notManagedError = caught;
+		}
+		check("uninstallSkill：手工目录无 meta 拒绝（notManaged）且目录保留", notManagedError !== null && /notManaged/.test(String(notManagedError?.message)) && existsSync(join(manualSkillDir, "SKILL.md")), notManagedError?.message);
+		const listedAfterManual = await listInstalled({ dshHome: home });
+		check("listInstalled：手工技能不进插件仓库列表", !listedAfterManual.skills.some((item) => item.id === "zz-manual-skill") && listedAfterManual.skills.length === 0, JSON.stringify(listedAfterManual.skills));
+		const marketDir = join(home, "skills", "alpha");
+		await mkdirCb(marketDir, { recursive: true });
+		await writeCb(join(marketDir, "SKILL.md"), "---\nname: alpha\ndescription: 市场装的\n---\n");
+		await writeCb(join(marketDir, ".market-meta.json"), `${JSON.stringify({
+			id: "clawhub:alpha",
+			source: "clawhub",
+			slug: "alpha",
+			version: "1.0.0",
+			installedAt: "now",
+			fileCount: 1
+		}, null, 2)}\n`);
+		const stateWithMarket = JSON.parse(await readCb(stateFile, "utf8"));
+		stateWithMarket.skills["clawhub:alpha"] = {
+			id: "clawhub:alpha",
+			dirName: "alpha",
+			version: "1.0.0",
+			installedAt: "now",
+			source: "clawhub"
+		};
+		stateWithMarket.skills["clawhub:evil"] = {
+			id: "clawhub:evil",
+			dirName: "../escape",
+			version: "1.0.0",
+			installedAt: "now",
+			source: "clawhub"
+		};
+		await writeCb(stateFile, `${JSON.stringify(stateWithMarket, null, 2)}\n`);
+		const listedMarket = await listInstalled({ dshHome: home });
+		check("skills 市场 id：listInstalled 收下 clawhub: 条目并透出 source", listedMarket.skills.some((item) => item.id === "clawhub:alpha" && item.dirName === "alpha" && item.source === "clawhub" && item.version === "1.0.0"), JSON.stringify(listedMarket.skills));
+		check("skills 市场 id：越权 dirName 的记录被跳过", !listedMarket.skills.some((item) => item.id === "clawhub:evil"), JSON.stringify(listedMarket.skills));
+		const unMarket = await uninstallSkill({
+			id: "clawhub:alpha",
+			dshHome: home
+		});
+		const stateAfterMarket = JSON.parse(await readCb(stateFile, "utf8"));
+		check("uninstallSkill：市场 id 按 state 定位目录、meta 匹配后删除", unMarket.id === "clawhub:alpha" && unMarket.dirName === "alpha" && !existsSync(marketDir) && stateAfterMarket.skills["clawhub:alpha"] === void 0, JSON.stringify(unMarket));
+		let marketNotManaged = null;
+		try {
+			await uninstallSkill({
+				id: "clawhub:beta",
+				dshHome: home
+			});
+		} catch (caught) {
+			marketNotManaged = caught;
+		}
+		check("uninstallSkill：市场 id 不在 state 拒绝（notManaged）", marketNotManaged !== null && /notManaged/.test(String(marketNotManaged?.message)), marketNotManaged?.message);
+		check("setCategory：市场 id 作为分类键可写可清", (await setCategory({
+			dshHome: home,
+			id: "clawhub:alpha",
+			category: "效率"
+		})).category === "效率" && (await setCategory({
+			dshHome: home,
+			id: "clawhub:alpha",
+			category: ""
+		})).category === null);
+		let marketIdShapeError = null;
+		try {
+			await uninstallSkill({
+				id: "clawhub:../evil",
+				dshHome: home
+			});
+		} catch (caught) {
+			marketIdShapeError = caught;
+		}
+		check("uninstallSkill：形似市场 id 但 slug 越权拒绝", marketIdShapeError !== null && /不合法/.test(String(marketIdShapeError?.message)), marketIdShapeError?.message);
+	} catch (error) {
+		failures.push(`✘ 自检过程异常：${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+		console.error(failures.at(-1));
+	} finally {
+		await rmCb(sandbox, {
+			recursive: true,
+			force: true
+		});
+	}
+	if (failures.length > 0) {
+		console.error(`repo-core selftest 失败：${failures.length}/${cases} 项`);
+		process.exitCode = 1;
+		return;
+	}
+	console.log(`repo-core selftest 通过：${cases} 个用例`);
+}
+if (await (async () => {
+	if (process.argv[1] === void 0) return false;
+	return resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+})() && process.argv.includes("--selftest")) await selftest();
+//#endregion
+export { writeState as C, writeDetailCache as S, setCategory as _, installPreset as a, uninstallSkill as b, isMarketSkillId as c, parseManifest as d, readDetailCache as f, selftest as g, rewritePresetPaths as h, detailCachePaths as i, listInstalled as l, resolveMountUrl as m, SKILL_DIR_RE as n, installSkill as o, readState as p, compareVersions as r, installTool as s, PRESET_ID_RE as t, mergeListing as u, setScope as v, uninstallTool as x, uninstallPreset as y };

@@ -1,0 +1,83 @@
+{
+  "name": "dsh-tauri-scheduler",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness 桌面面板的定时任务：创建每日/间隔/工作日/每周自动化，按计划在全新会话中运行，并可查看运行历史。",
+  "author": "Hairyf <wwu710632@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dsh-tauri-desk/dsh-tauri-plugins.git"
+  },
+  "bugs": "https://github.com/dsh-tauri-desk/dsh-tauri-plugins/issues",
+  "keywords": [
+    "dsh",
+    "plugin",
+    "dsh-plugin",
+    "scheduler",
+    "cron",
+    "tauri",
+    "deepseek-harness"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": "./dist/client.cjs",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "cordis.patch.yml",
+    "dist"
+  ],
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "dsh-tauri",
+        "dsh-tauri-ui"
+      ],
+      "external": [
+        "dsh-tauri/client",
+        "dsh-tauri-ui/client"
+      ],
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepublishOnly": "nr build",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "cron-schedule": "catalog:utils",
+    "dsh-tauri": "workspace:*",
+    "dsh-tauri-ui": "workspace:*",
+    "lodash-es": "catalog:utils",
+    "pathe": "catalog:utils"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-agent": "catalog:dsh",
+    "@deepseek-ai/dsh-llm": "catalog:dsh",
+    "@deepseek-ai/dsh-session": "catalog:dsh",
+    "@deepseek-ai/dsh-tools": "catalog:dsh",
+    "@deepseek-ai/dsh-user-approval": "catalog:dsh",
+    "@deepseek-ai/dsh-workspace": "catalog:dsh",
+    "@types/lodash-es": "catalog:types",
+    "dsh-tauri-tsdown": "workspace:*",
+    "tsdown": "catalog:cli",
+    "vitest": "catalog:testing"
+  }
+}

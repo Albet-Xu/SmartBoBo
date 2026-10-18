@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/bobo/ui-settings-proxy/README.md
+/:
+  en: f6adcda5eadc18e1
+  zh: b649d2c4d737e9a5
+/bobo-settings-proxy-ui:
+  en: 85df442f4e2f2593
+  zh: 40e135707475191e
+/bobo-settings-proxy-ui/summary:
+  en: dc3d17eec9010cd6
+  zh: e52dec951a91f08e
+/bobo-settings-proxy-ui/table-of-contents:
+  en: 122f0d41696980b1
+  zh: 91e3ffc41873c2d7
+/bobo-settings-proxy-ui/use-this-package:
+  en: ab698614c443c00c
+  zh: 710aa411a6e59e3e
+/bobo-settings-proxy-ui/understand-the-implementation:
+  en: ac57c1685ee7098a
+  zh: cba8451185da101c
+/bobo-settings-proxy-ui/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/bobo-settings-proxy-ui/model-experience/proxy-pool-settings-section:
+  en: 6a0d65bb1977fdb7
+  zh: 544f7ced440799a7
+/bobo-settings-proxy-ui/model-experience/proxy-pool-settings-section/what-the-model-sees:
+  en: 5d9b5b3e0461771b
+  zh: f5d6614bcdcba1dc
+/bobo-settings-proxy-ui/model-experience/proxy-pool-settings-section/token-effect:
+  en: da96515c87d8bd08
+  zh: aa0b10fdeb88cae9
+/bobo-settings-proxy-ui/model-experience/proxy-pool-settings-section/kv-cache-effect:
+  en: 71f6e13b28e6b47f
+  zh: 85398e197cab5dce
+/bobo-settings-proxy-ui/known-limitations-and-deferred-work:
+  en: b64b5be4393d5ba8
+  zh: e5206d5672da5d3f
+/bobo-settings-proxy-ui/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 8ec3e73528ddb1a6

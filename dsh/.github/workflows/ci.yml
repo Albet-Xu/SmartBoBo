@@ -1,0 +1,360 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, feat/mobile-sidebar]
+
+permissions:
+  contents: read
+  # skip-duplicate-actions 要查询 Workflow Runs API（actions 作用域），
+  # 缺它会 403/超时；仅 contents: read 会被 GitHub 解释为无 actions 权限。
+  actions: read
+
+# 同一分支/PR 的新提交会取消上次仍在运行的 CI，避免浪费 runner 时间。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # doc 下的 debug 符号只会膨胀 target 目录、降低缓存命中率，测试不需要。
+  CARGO_PROFILE_DEV_DEBUG: 0
+
+jobs:
+  # 门卫：内容哈希相同且已成功通过（或同一内容正在运行）时跳过，避免重复跑。
+  # push main 与 pull_request main 常常是同一个内容，用 skip_after_successful_duplicate
+  # 加 concurrent_skipping: same_content 精确去重；手动触发/schedule 永不跳过。
+  pre_job:
+    name: Pre-job (Skip Duplicate Actions)
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5.3.2
+        with:
+          concurrent_skipping: same_content
+          skip_after_successful_duplicate: true
+          paths_ignore: '["**/docs/**", "**/*.md"]'
+
+  # 单元测试（vitest）+ 类型检查 + lint：
+  unit:
+    name: Unit Tests (vitest)
+    needs: pre_job
+    if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check sources before generating declarations
+        run: pnpm run typecheck
+
+      # 插件 client 类型经 workspace 包的 exports 指向构建产物（dist/client.d.cts），
+      # typecheck/lint 前先构建两个核心共享包，否则全新检出会报
+      # "Cannot find module 'dsh-tauri/client'"。
+      - name: Build core packages
+        run: pnpm --filter dsh-tauri build && pnpm --filter dsh-tauri-ui build
+
+      # dsh-tauri-ui 的构建会重新生成并压缩已提交的 Tailwind 产物。若源码新增/删除了
+      # utility 却漏提产物，运行时只会静默缺样式；显式检查工作树可在合并前阻断漂移。
+      - name: Verify generated Tailwind CSS is current
+        id: tailwind_check
+        run: git diff --exit-code -- packages/dsh-tauri-ui/src/client/styles/index.ts
+
+      - name: Upload regenerated Tailwind CSS on drift
+        if: failure() && steps.tailwind_check.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: generated-tailwind-css
+          path: packages/dsh-tauri-ui/src/client/styles/index.ts
+          if-no-files-found: error
+
+      - name: Type check package exports
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint
+        run: pnpm run lint
+
+      # test/plugin-resource-closure.test.ts 断言部署产物 src-tauri/resources/node_modules，
+      # 该目录由 build:plugins 生成；不构建则整组用例 skipIf 跳过、在 CI 里从不执行。
+      - name: Build Plugins
+        run: pnpm build:plugins
+
+      - name: Unit test
+        run: pnpm run test:unit -- --run
+
+  # 插件 L2 E2E（vitest + Playwright 库 API）：
+  # 打构建产物，起真实 `dsh web` 进程，断言宿主路由与客户端挂载点。
+  plugins-e2e:
+    name: Plugins E2E Tests (vitest + playwright)
+    needs: pre_job
+    if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Chromium 二进制不带在 npm 包里：runner 缺它时 chromium.launch() 会直接失败，
+      # 浏览器类用例必须真跑，不能因缺二进制而静默跳过。
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # L2 只针对构建产物运行（官方「真实入口路径」要求），未构建会直接失败。
+      - name: Build Plugins
+        run: pnpm build:plugins
+
+      # dsh CLI 刻意不进仓库依赖树：它是运行期产物，装进依赖树会与 catalog 的
+      # `@deepseek-ai/dsh-*` 形成双树，profile 组合时取到不匹配的实例
+      # （实测报 `dsh-session does not provide an export named 'snapshotJsonValue'`）。
+      # 这里装到独立目录，经 DSH_E2E_DSH_BIN 指给编排。
+      - name: Install dsh CLI (isolated)
+        run: |
+          mkdir -p "$RUNNER_TEMP/dsh-cli"
+          cd "$RUNNER_TEMP/dsh-cli"
+          npm init -y >/dev/null
+          # 0.1.5-rc.3 起该发布代的依赖区间引用了一个从未发布的版本
+          # （dsh-client-ui-sidebar-documentpreview@^0.1.5-rc.3），整条 0.1.5-rc.x
+          # 直接安装都会 ETARGET；用 overrides 夹回已发布的 rc.2（同一发布代）。
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.overrides={'@deepseek-ai/dsh-client-ui-sidebar-documentpreview':'0.1.5-rc.2'};fs.writeFileSync('package.json',JSON.stringify(p,null,2))"
+          # 插件 L2 用例的文案/分区断言按 0.1.5-rc 基线写就（也是 README 声明的最低兼容基线）；
+          # 0.1.6 起上游改了设置侧栏分区名与未分组 chip 等文案，另需一轮 e2e 适配。
+          npm install --no-audit --no-fund @deepseek-ai/dsh@0.1.5-rc.2
+
+      - name: Plugin L2 test (legacy core)
+        env:
+          DSH_E2E_DSH_BIN: ${{ runner.temp }}/dsh-cli/node_modules/@deepseek-ai/dsh/lib/bin.js
+        run: node node_modules/vitest/vitest.mjs run --project plugin --exclude test/e2e/plugins/dsh-tauri-extension-panel.e2e.ts --exclude test/e2e/plugins/dsh-tauri-scheduler.e2e.ts --exclude test/e2e/plugins/dsh-tauri-scheduler-client.e2e.ts
+
+      - name: Mobile settings composition (legacy core)
+        env:
+          DSH_E2E_DSH_BIN: ${{ runner.temp }}/dsh-cli/node_modules/@deepseek-ai/dsh/lib/bin.js
+        run: |
+          for seed in 201 202 203 204 205; do
+            node node_modules/vitest/vitest.mjs run --project plugin --sequence.shuffle --sequence.seed="$seed" test/e2e/plugins/dsh-tauri-mobile-settings.e2e.ts || exit $?
+          done
+
+      - name: Install current dsh CLI (isolated)
+        run: npm install --prefix "$RUNNER_TEMP/dsh-cli-current" --no-audit --no-fund @deepseek-ai/dsh@0.2.1-alpha.1
+
+      - name: Official plugins, appearance and mobile settings (current core)
+        env:
+          DSH_E2E_DSH_BIN: ${{ runner.temp }}/dsh-cli-current/node_modules/@deepseek-ai/dsh/lib/bin.js
+        run: |
+          for seed in 101 102 103 104 105; do
+            node node_modules/vitest/vitest.mjs run --project plugin --sequence.shuffle --sequence.seed="$seed" test/e2e/plugins/dsh-tauri-extension-panel.e2e.ts test/e2e/plugins/dsh-tauri-mobile-settings.e2e.ts test/e2e/plugins/dsh-tauri-appearance.e2e.ts test/e2e/plugins/dsh-tauri-appearance-boot.e2e.ts || exit $?
+          done
+
+      - name: Host and migrated plugin contracts (current core)
+        env:
+          DSH_E2E_DSH_BIN: ${{ runner.temp }}/dsh-cli-current/node_modules/@deepseek-ai/dsh/lib/bin.js
+        run: node node_modules/vitest/vitest.mjs run --project plugin test/e2e/plugins/dsh-host-and-core-contract.e2e.ts test/e2e/plugins/dsh-tauri-model.e2e.ts test/e2e/plugins/dsh-tauri-worktree.e2e.ts test/e2e/plugins/dsh-tauri-experimental.e2e.ts
+
+      - name: Unified scheduler host and right-sidebar contracts (current core)
+        id: scheduler_contracts
+        env:
+          DSH_E2E_DSH_BIN: ${{ runner.temp }}/dsh-cli-current/node_modules/@deepseek-ai/dsh/lib/bin.js
+          DSH_SCHEDULER_DIAGNOSTICS_DIR: ${{ runner.temp }}/scheduler-diagnostics
+        run: |
+          for seed in 987 988 989 990 991; do
+            node node_modules/vitest/vitest.mjs run --project plugin --sequence.shuffle --sequence.seed="$seed" test/e2e/plugins/dsh-tauri-scheduler.e2e.ts test/e2e/plugins/dsh-tauri-scheduler-client.e2e.ts || exit $?
+          done
+
+      - name: Upload scheduler contract failure diagnostics
+        if: failure() && steps.scheduler_contracts.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: scheduler-contract-diagnostics
+          path: ${{ runner.temp }}/scheduler-diagnostics
+          if-no-files-found: error
+
+  # 桌面端 L3 E2E（vitest + WebdriverIO）：
+  # 驱动真实 Tauri 窗口，只能在 Windows 上跑（embedded WebDriver + WebView2）。
+  # 需要 dist/ 与内嵌前端的 debug 二进制；`tauri build` 会带上 custom-protocol，
+  # 否则应用走 devUrl 而不嵌 dist（页面为空，选择器全找不到）。
+  desktop-e2e:
+    name: Desktop E2E Tests (vitest + webdriverio)
+    needs: pre_job
+    if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # build:plugins 的产物只由 packages/** 与锁文件/构建脚本决定，未变时直接复用，
+      # 省掉整轮（32~55s）。命中即跳过下方 Build Plugins，故新增输入时必须同步扩充 key。
+      # key 取 restore 的 cache-primary-key：save 时 packages/*/dist 已生成，
+      # 在彼处重新 hashFiles 会得到不同的值。
+      - name: Restore bundled plugins
+        id: plugins_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            src-tauri/resources/node_modules
+            packages/*/dist
+          key: plugins-${{ runner.os }}-${{ hashFiles('packages/**', 'scripts/**', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json') }}
+
+      - name: Setup Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Plugins
+        if: steps.plugins_cache.outputs.cache-hit != 'true'
+        run: pnpm build:plugins
+
+      - name: Save bundled plugins
+        if: steps.plugins_cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            src-tauri/resources/node_modules
+            packages/*/dist
+          key: ${{ steps.plugins_cache.outputs.cache-primary-key }}
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          # 只有 main 写缓存：PR 每次生成的条目会挤掉 main 的暖缓存，
+          # 而 10 GB 上限是仓库级共享的（PR 只读、不写）。
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # 根 dist/ 只能由 vite build 产出（build:plugins 仅构建 packages/*，不生成 dist），
+      # 而 frontendDist 指向 ../dist：缺失会让应用走 devUrl、页面为空。
+      - name: Build frontend
+        run: pnpm exec vite build
+
+      # 内联 JSON 经 pwsh → pnpm(.cmd) 转发时引号会被剥掉（实测报
+      # `key must be a string`），改为落一份配置文件再传路径。
+      # 清空 beforeBuildCommand 是为了避免重复触发 `pnpm build`
+      # （它的 prebuild 会再跑一遍 build:plugins）。
+      - name: Build debug binary
+        run: |
+          Set-Content -Path "$env:RUNNER_TEMP\tauri-e2e.json" -Value '{"build":{"beforeBuildCommand":""}}'
+          pnpm tauri build --debug --no-bundle --config "$env:RUNNER_TEMP\tauri-e2e.json"
+
+      - name: Desktop L3 test
+        run: pnpm run test:e2e:desktop -- --run
+
+  # Rust 单元测试（应用主体逻辑）：
+  # 这是 CI 此前完全缺失的部分。仓库存在大量平台专属代码，必须在对应 OS 上编译并测试：
+  #   - #[cfg(windows)]：win_spawn / win_inspector / cli shim / path / MSI 版本处理 → Windows
+  #   - #[cfg(target_os = "macos")]：homebrew Node 路径 & macOS 包名/资产名 → macOS
+  #   - Unix/Linux cfg 分支 → ubuntu
+  # 与官方 tauri-apps/tauri 的 test-core 矩阵一致：ubuntu + macos + windows，
+  # "更广泛"地覆盖应用实际发布的三个平台，而不是像前端那样按 Node 版本重复。
+  rust-test:
+    name: Rust tests
+    needs: pre_job
+    if: ${{ needs.pre_job.outputs.should_skip != 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux 用与 release workflow 相同的 ubuntu-22.04 + 同一套 apt 包，
+        # 保证首次跑 CI 就能编译（tauri 的 webkit/appindicator 原生依赖对齐已知可用环境）。
+        # macOS 用官方矩阵的 macos-14（Apple Silicon）。
+        os: [ubuntu-22.04, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Setup Xcode
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/setup-xcode
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          # 同上：PR 只读缓存，避免每轮生成新条目挤掉 main 的暖缓存。
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Run Windows native notification tests
+        if: runner.os == 'Windows'
+        run: cargo test -p tauri-plugin-notifications --lib --no-default-features --locked
+        working-directory: src-tauri
+
+      - name: Run tests
+        run: cargo test --all-features --locked
+        working-directory: src-tauri
+
+      # 与下面的「Check startup regression stability」同形：`for` 必须以 `done` 收尾，
+      # 且必须显式声明 working-directory —— 否则 cargo 会在仓库根目录执行、
+      # 找不到 workspace（Cargo.toml 在 src-tauri/ 下）。
+      - name: Check plugin recovery and update cache stability
+        shell: bash
+        run: |
+          for iteration in 1 2 3 4 5; do
+            cargo test --all-features --locked service::plugin::update::tests:: -- --test-threads=1 || exit 1
+            cargo test --all-features --locked service::plugin::internal:: -- --test-threads=1 || exit 1
+            cargo test --all-features --locked service::plugin::install::diagnose:: -- --test-threads=1 || exit 1
+          done
+        working-directory: src-tauri
+
+      - name: Check startup regression stability
+        shell: bash
+        run: |
+          for iteration in 1 2 3 4 5; do
+            cargo test --all-features --locked desktop::startup::tests:: -- --test-threads=1 || exit 1
+          done
+        working-directory: src-tauri
+
+      - name: Check macOS login startup regression
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'git restore -- src/desktop/autostart.rs' EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/desktop/autostart.rs')
+          source = path.read_text()
+          assert source.count('set_enabled(app, true)') == 1
+          path.write_text(source.replace('set_enabled(app, true)', 'Ok(true)'))
+          PY
+          test_name=desktop::autostart::tests::macos_init_refreshes_only_enabled_login_items
+          if cargo test --lib --all-features --locked "$test_name" -- --exact --nocapture > "$RUNNER_TEMP/autostart-mutant.log" 2>&1; then
+            cat "$RUNNER_TEMP/autostart-mutant.log"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/autostart-mutant.log"
+          grep -F 'enabled login item must target the current executable' "$RUNNER_TEMP/autostart-mutant.log"
+          git restore -- src/desktop/autostart.rs
+          for iteration in 1 2 3 4 5; do
+            cargo test --lib --all-features --locked "$test_name" -- --exact --nocapture
+          done
+        working-directory: src-tauri

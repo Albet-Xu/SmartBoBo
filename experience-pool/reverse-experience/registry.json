@@ -1,0 +1,453 @@
+{
+ "e1fc70b39356430aa2239f23582aa6fd": {
+  "id": "e1fc70b39356430aa2239f23582aa6fd",
+  "domain": "news.qq.com",
+  "url": "https://news.qq.com/rain/a/20260902A0BERW00",
+  "title": "腾讯新闻文章页 rain/a/ 直出",
+  "tags": [
+   "SSR直出",
+   "无签名"
+  ],
+  "anti_crawl": [
+   "无特殊反爬（PC UA + Referer 即可 200）"
+  ],
+  "attempts": [
+   {
+    "method": "直接 GET https://news.qq.com/rain/a/<id>（PC UA）",
+    "result": "success",
+    "note": "HTTP 200，259KB，正文 SSR 直出（article-content），无需接口逆向"
+   }
+  ],
+  "final_solution": "文章页直接抓 HTML：标题/meta/正文（article-content）均随首屏 SSR 返回，无需调用数据接口或还原签名。",
+  "positive_lessons": [
+   "news.qq.com 的 /rain/a/ 文章页为 SSR 直出，正文在 HTML 中，优先直接抓页面而非逆向接口",
+   "搜题/复用风格：同域文章页后续采集可直接套用本结论，跳过接口分析步骤"
+  ],
+  "negative_lessons": [
+   "不要对文章页先做接口签名分析——正文与标题已随首屏 HTML 返回，纯属浪费时间"
+  ],
+  "result": "SUCCESS",
+  "confidence": 2.5,
+  "tools_used": [
+   "requests"
+  ],
+  "used_experience_ids": [],
+  "feature_hash": "7869872c5fe9b1a0",
+  "created_at": "2026-09-03T04:08:52+00:00",
+  "updated_at": "2026-09-03T04:11:20+00:00",
+  "used_count": 1,
+  "archived": true,
+  "qdrant_pending": false,
+  "qdrant_point_id": "e1fc70b39356430aa2239f23582aa6fd",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\reverse-experience\\news-qq-com\\2026-09-03T04-08-52+00-00-e1fc70b3.md"
+ },
+ "41c996fb84b140a9a2367ef6bfa755cc": {
+  "id": "41c996fb84b140a9a2367ef6bfa755cc",
+  "domain": "news.qq.com",
+  "url": "https://news.qq.com/rain/a/20260902A0A6SY00",
+  "title": "腾讯新闻文章页 rain/a/ 直出（第二条验证）",
+  "tags": [
+   "SSR直出",
+   "无签名"
+  ],
+  "anti_crawl": [
+   "无特殊反爬（PC UA + Referer 即可 200）"
+  ],
+  "attempts": [
+   {
+    "method": "直接 GET https://news.qq.com/rain/a/<id>（PC UA + Referer）",
+    "result": "success",
+    "note": "HTTP 200，116KB，SSR 直出，title/meta/正文均随 HTML 返回"
+   }
+  ],
+  "final_solution": "文章页直接抓 HTML，无需逆向数据接口或签名；article-content 按 div 深度解析正文。",
+  "positive_lessons": [
+   "news.qq.com /rain/a/ 文章页再次验证为 SSR 直出（不同文章同款结论），可直接复用通道",
+   "正文节点 article-content 内含嵌套 div，提取需按 div 深度计数而非简单正则"
+  ],
+  "negative_lessons": [
+   "简单正则截取 article-content 会因嵌套 div 只拿到开头片段（首次提取仅 100 余字）",
+   "不要对文章页先做接口签名分析——正文已随首屏 HTML 返回"
+  ],
+  "result": "SUCCESS",
+  "confidence": 2.5,
+  "tools_used": [
+   "requests",
+   "HTMLParser"
+  ],
+  "used_experience_ids": [
+   "e1fc70b39356430aa2239f23582aa6fd"
+  ],
+  "feature_hash": "7869872c5fe9b1a0",
+  "created_at": "2026-09-03T06:41:50+00:00",
+  "updated_at": "2026-09-03T06:41:50+00:00",
+  "used_count": 0,
+  "archived": false,
+  "qdrant_pending": false,
+  "qdrant_point_id": "41c996fb84b140a9a2367ef6bfa755cc",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\reverse-experience\\news-qq-com\\2026-09-03T06-41-50+00-00-41c996fb.md"
+ },
+ "d9f2c8b75bf24a609a69ef81cb71adda": {
+  "id": "d9f2c8b75bf24a609a69ef81cb71adda",
+  "domain": "msn.cn",
+  "url": "https://www.msn.cn/zh-cn/entertainment/movies/gdb评论-动画电影-八仙-东方传说故事与国风视觉盛宴/ar-AA2buMhB",
+  "title": "MSN中文站文章详情页逆向：公开内容API直取，无需渲染",
+  "tags": [
+   "公开API",
+   "无签名",
+   "SPA"
+  ],
+  "anti_crawl": [
+   "页面为JS渲染SPA，正文不随首屏HTML返回（camoufox直抓会落到首页推荐内容）"
+  ],
+  "attempts": [
+   {
+    "method": "camoufox 直接抓文章页 HTML",
+    "result": "fail",
+    "note": "拿到的是 MSN 首页推荐流与隐私横幅，正文未加载"
+   },
+   {
+    "method": "js-reverse 打开页面分析网络请求",
+    "result": "success",
+    "note": "发现资产域 assets.msn.cn 的公开 JSON API 承载正文"
+   },
+   {
+    "method": "requests 直连内容 API",
+    "result": "success",
+    "note": "仅默认 UA 即 200，Origin/Referer 非必需"
+   }
+  ],
+  "final_solution": "GET https://assets.msn.cn/content/view/v2/Detail/zh-cn/{文章ID} -> JSON（title/abstract/body(HTML)/authors/provider/sourceHref/keywords/readTimeMin）。文章 ID 从 URL 末尾 ar-XXX 段提取（如 ar-AA2buMhB -> AA2buMhB）。全文 Markdown 由脚本 parse_data 组装，无需浏览器。增量采集 manifest 复用模板机制。",
+  "positive_lessons": [
+   "MSN 文章首屏不直出正文，先看网络请求找资产域 API，不要对页面 HTML 死磕",
+   "assets.msn.cn 内容 API 公开无签名，带普通 UA 即可请求",
+   "URL 中 ar-XXX 段即文章 ID，可直接拼 API 地址"
+  ],
+  "negative_lessons": [
+   "直接用 crawler 引擎抓 SPA 文章页，若抓到的是首页推荐流而非正文，说明正文在异步 API 里，应立即切 js-reverse 抓接口",
+   "网页渲染型 SPA 的 <title> 对 JSON 无效，脚本里取标题要解析 JSON 的 title 字段"
+  ],
+  "result": "SUCCESS",
+  "confidence": 3.0,
+  "tools_used": [
+   "js-reverse",
+   "requests",
+   "camoufox"
+  ],
+  "used_experience_ids": [],
+  "feature_hash": "a27c49ffae17053a",
+  "created_at": "2026-09-05T10:35:56+00:00",
+  "updated_at": "2026-09-05T10:35:56+00:00",
+  "used_count": 0,
+  "archived": false,
+  "qdrant_pending": false,
+  "qdrant_point_id": "d9f2c8b75bf24a609a69ef81cb71adda",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\reverse-experience\\msn-cn\\2026-09-05T10-35-56+00-00-d9f2c8b7.md"
+ },
+ "83e8701fb35648709759f3742cb333b9": {
+  "id": "83e8701fb35648709759f3742cb333b9",
+  "domain": "iaea.org",
+  "url": "https://www.iaea.org/publications/search",
+  "title": "IAEA 出版物搜索页 PDF 下载逆向",
+  "tags": [
+   "cloudflare",
+   "drupal",
+   "pdf下载",
+   "列表分页",
+   "动态cookie"
+  ],
+  "anti_crawl": [
+   "Cloudflare（cf_clearance HttpOnly + TLS 指纹绑定）"
+  ],
+  "attempts": [
+   {
+    "method": "requests 直取列表页/PDF",
+    "result": "fail",
+    "note": "Cloudflare 拦截；cf_clearance 与浏览器 TLS/JA3 指纹绑定，普通 HTTP 客户端无法复用"
+   },
+   {
+    "method": "camoufox 真实页面导航（page.goto）三步链路",
+    "result": "success",
+    "note": "列表页 ?page=N → 详情页 .publication-actions 提取 PDF → www-pub.iaea.org PDF 200 application/pdf 全链路通过"
+   }
+  ],
+  "final_solution": "用 camoufox 单个持久浏览器上下文：1) page.goto(搜索页?page=N) 枚举 h3.card__title>a 链接（分页器 title=\\\"Go to last page\\\" 取末页）; 2) 详情页 .publication-actions a[href*=www-pub.iaea.org/MTCD/Publications/PDF] 取 PDF 直链; 3) page.goto(pdf, wait_until=commit).body() 下载字节。勿用 context.request（Node TLS 指纹与 cf_clearance 不匹配会被拒）。",
+  "positive_lessons": [
+   "cf_clearance 与 TLS 指纹绑定：Cloudflare 站点必须走真实浏览器导航取数，不能只带 Cookie 用 requests/APIRequestContext",
+   "camoufox page.goto 返回的 Response 可直接 .text()/.body() 取内容，PDF 用 wait_until=commit 最快",
+   "Playwright Response 没有 raise_for_status()，需手动校验 status >= 400",
+   "Drupal 分页器原始 HTML 是相对 href（?page=534），用 title=\"Go to last page\" 定位末页最稳"
+  ],
+  "negative_lessons": [
+   "不要尝试仅 requests+cf_clearance 复现：指纹不匹配，稳定被拦",
+   "不改 requests 方案，直接上 camoufox 真实导航，一次到位"
+  ],
+  "result": "SUCCESS",
+  "confidence": 3.0,
+  "tools_used": [
+   "camoufox-debug",
+   "reverse-crawler 模板"
+  ],
+  "used_experience_ids": [],
+  "feature_hash": "124892ebb46665bd",
+  "created_at": "2026-09-05T15:48:14+00:00",
+  "updated_at": "2026-09-05T15:48:14+00:00",
+  "used_count": 0,
+  "archived": false,
+  "qdrant_pending": false,
+  "qdrant_point_id": "83e8701fb35648709759f3742cb333b9",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\reverse-experience\\iaea-org\\2026-09-05T15-48-14+00-00-83e8701f.md"
+ },
+ "d36d7a870fc542b4a34a002cb9c016f8": {
+  "id": "d36d7a870fc542b4a34a002cb9c016f8",
+  "domain": "dewu.com",
+  "url": "https://www.dewu.com/",
+  "title": "得物官网逆向：sign=MD5(键序拼接+固定盐) 还原，社区热门榜/品类接口纯requests直取，商品流接口级485人机校验",
+  "tags": [
+   "签名参数",
+   "js混淆",
+   "行为风控",
+   "验证码",
+   "加密请求体",
+   "SPA"
+  ],
+  "anti_crawl": [
+   "pceptor.js 混淆SDK（注入 adi/hsn/ltk/sk/sks/shumeiid/sessionid 头，debugger+死循环反调试）",
+   "数美 shumei 设备指纹",
+   "阿里云验证码 FeiLin/AliyunCaptcha",
+   "dav.dewu.com/interceptor 下发 isAnti/gray 风控开关",
+   "商品流 feeds/info 接口级 485『请校验验证码』（真实浏览器+完整签名头同样被拦）",
+   "POST 敏感接口 body 被前端 fetch 拦截器整体加密成 {\"data\":...}",
+   "CSR SPA：nextExport 静态导出，首屏 HTML/__NEXT_DATA__ 无正文"
+  ],
+  "attempts": [
+   {
+    "method": "requests 直抓 www.dewu.com/ 与 /community 的 HTML",
+    "result": "fail",
+    "note": "CSR SPA，首屏无正文（__NEXT_DATA__ 空壳），正文全部走 XHR"
+   },
+   {
+    "method": "在 webpack chunk 里抠 request 封装模块 rW1U→d0RG，还原签名算法",
+    "result": "success",
+    "note": "sign=MD5(参数键名排序逐项拼接 key+value + 盐值 048a9c4943398714b356a696503d2d36)；实测 {pageNum:1,pageSize:20}->a44fa02883cc1342f22c7dfefea1d9e9 与抓包逐字节一致"
+   },
+   {
+    "method": "纯 requests+sign 调 GET 社区热门榜与 POST 品类映射",
+    "result": "success",
+    "note": "无需登录、无需任何风控头即 200；GET /sns-rec/v1/common/h5/community-home-hot-content、POST .../category-pick/mapping"
+   },
+   {
+    "method": "商品流 feeds/info 带 sign 用纯 requests 与真实 camoufox 浏览器内调用",
+    "result": "fail",
+    "note": "两种方式均返回 code=485 请校验验证码，需人工过滑块，属接口级人机校验"
+   },
+   {
+    "method": "探热门榜翻页参数 pageNum/lastId/cursor/offset/pageNo 组合",
+    "result": "fail",
+    "note": "任意参数组合返回的 contentList 100% 重合，data.total=10000 是假象；pageSize 上限 50，传 100 返回 code=900"
+   }
+  ],
+  "final_solution": "脚本 dewu_crawler.py（站点键 dewu-com，D:\\测试\\dewu-com\\crawl_script\\）：make_sign 按 JS 语义还原签名（bool->true/false、数组 sort+逗号连接、对象 JSON.stringify、NaN->空、None 跳过、键名升序），salt 固定 048a9c4943398714b356a696503d2d36。可用通道纯 requests 直取：GET /sns-rec/v1/common/h5/community-home-hot-content（固定 TOP50，pageSize=50）与 POST .../category-pick/mapping（11 个品类 pickId）。products 模式调用 feeds/info 如实报告 485 并提示 --cookie 传入过校验后的会话重试。增量采集用 stable_payload 剔除 sessionId/traceId/servertime 等易变字段再算指纹，避免无条件判更新。",
+  "positive_lessons": [
+   "webpack chunk 里直接抠 request 封装模块即可拿到签名算法：盐值是写死的字符串，MD5 拼接规则（键序+数组sort+JSON.stringify）可逐条对齐复现，一次验证+多次复现",
+   "同一站点不同接口风控强度差很多：GET 公开榜/品类映射零门槛，商品流接口级 485；先测再决定要不要啃混淆SDK",
+   "验证接口要实测参数组合，别被 data.total 骗：热门榜 total=10000 但 pageNum/lastId/cursor/offset 全部无效，恒返回同一 TOP50",
+   "485 响应带随机 sessionId，增量指纹必须剔除易变传输字段，否则每次都误判为更新",
+   "camoufox-debug 的 debug_navigate 超时后页面往往已加载，用 debug_evaluate 探 location/title 确认再重试"
+  ],
+  "negative_lessons": [
+   "不要对 CSR/nextExport SPA 的首屏 HTML 死磕：__NEXT_DATA__ 是空壳，正文全在 XHR，直接找接口",
+   "别浪费时间复刻 pceptor 混淆 SDK（unicode 变量名+debugger 反调试+指纹绑定）：能绕就绕，走免风控的 GET 接口",
+   "真实浏览器+站点自身完整签名头也解决不了 485：属接口级人机校验，纯代码层面硬刚无解，只能人工过滑块后带 Cookie",
+   "把 requests 的请求头照抄浏览器全部风控头没用，反而可能触发更严风控；最小头（UA+Origin+Referer）即可"
+  ],
+  "result": "PARTIAL_SUCCESS",
+  "confidence": 3.5,
+  "tools_used": [
+   "camoufox-debug",
+   "js-reverse",
+   "requests",
+   "pwsh"
+  ],
+  "used_experience_ids": [],
+  "feature_hash": "aad15f5bf73435d6",
+  "created_at": "2026-09-10T11:44:09+00:00",
+  "updated_at": "2026-09-10T14:54:22+00:00",
+  "used_count": 1,
+  "archived": false,
+  "qdrant_pending": false,
+  "qdrant_point_id": "d36d7a870fc542b4a34a002cb9c016f8",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\reverse-experience\\dewu-com\\2026-09-10T11-44-09+00-00-d36d7a87.md"
+ },
+ "c5735b79064c48dc9bf3ef83a7bc06ec": {
+  "id": "c5735b79064c48dc9bf3ef83a7bc06ec",
+  "domain": "csdn.net",
+  "url": "https://blog.csdn.net/2301_79139273/article/details/152852455",
+  "title": "CSDN 博客文章页逆向：SSR直出正文+作者列表内部接口，521 JS挑战页用 camoufox 兜底，正文指纹做增量",
+  "tags": [
+   "SSR直出",
+   "无签名",
+   "JS挑战",
+   "速率限制",
+   "公开API",
+   "markdown转换"
+  ],
+  "anti_crawl": [
+   "高频请求触发 521 JS 挑战页（加速乐风格：内嵌混淆脚本计算 cookie 后 setTimeout 重载，特征串 window.onload=setTimeout(\"ey(）",
+   "作者主页 HTML 偶发 521（换列表接口规避）",
+   "阅读数/点赞数/发布时间等统计字段随时间漂移，整页 hash 不稳定",
+   "会员/付费文带 hide-article-box 阅读全文遮罩"
+  ],
+  "attempts": [
+   {
+    "method": "requests 直接抓文章详情页 HTML",
+    "result": "success",
+    "note": "SSR 直出：正文在 #content_views（markdown_views），标题 h1.title-article，元数据+JSON-LD(@type=Article) 齐全，纯 requests 200，无需签名"
+   },
+   {
+    "method": "抓作者主页 blog.csdn.net/<用户名> 提取文章链接",
+    "result": "fail",
+    "note": "作者主页 Vue SPA 且偶发 521 挑战页，不稳定"
+   },
+   {
+    "method": "用内部接口 get-business-list 枚举作者文章",
+    "result": "success",
+    "note": "GET blog.csdn.net/community/home-api/v1/get-business-list?page&size&businessType=blog&username=xx -> 200 JSON 无签名，字段含 title/url/viewCount/diggCount/collectCount/postTime/tags"
+   },
+   {
+    "method": "html2text 直接转换 content_views",
+    "result": "part_success",
+    "note": "正文可转换，但 <pre><code> 被缩进重排成纯文本；改用占位符+正则(\\s*ph\\s*)替换还原成 ```语言 围栏后成功（9 个 JS 代码块完整保留）"
+   },
+   {
+    "method": "增量指纹直接 hash 整页",
+    "result": "fail",
+    "note": "挑战页/渲染页标记不同+阅读数漂移，每次都判更新；改为只对解析后的正文部分做指纹（元数据不参与）后稳定跳过"
+   }
+  ],
+  "final_solution": "脚本 csdn_crawler.py（站点键 csdn-net，D:\\测试\\csdn-net\\crawl_script\\）：1) 详情页模式 --url 直接 requests SSR 抓取，bs4 提取 h1.title-article / #content_views / JSON-LD 元数据（作者/摘要/标签/发布时间），正文 <pre> 占位符转 ```fence 后交给 html2text；2) 列表模式 --username 分页调 get-business-list 接口枚举文章后再逐篇抓详情；3) 检测到 521 挑战页/无正文容器时自动用内置 camoufox 渲染（真实浏览器执行挑战脚本过 cookie，实测有效）；4) 增量 --incremental 用正文部分 hash 对比（阅读/点赞漂移与取数路径差异不影响，实测连续两次全部跳过）。",
+  "positive_lessons": [
+   "CSDN 文章详情页是 SSR 直出：正文/标题/元数据+JSON-LD 都在首屏 HTML 里，requests 带普通 UA 即可，无需逆向签名",
+   "html2text 会把 <pre> 内容缩进重排，占位符回填必须用 re.sub(r'\\s*'+ph+r'\\s*') 模糊替换，精确 replace 会失败",
+   "521 JS 挑战页（特征 window.onload=setTimeout(\"ey(）requests 解不了，用 camoufox 渲染自动执行挑战+重载拿回正文，是最省事的兜底",
+   "元数据选择器：span.read-count(首批阅读)/#blog-digg-num(点赞)/.get-collection(收藏)/span.time.blog-postTime[data-time](发布时间)/span.article-type-text(原创)"
+  ],
+  "negative_lessons": [
+   "不要用整页 HTML hash 做 CSDN 增量指纹：页面含 viewCount 等漂移字段，且 requests 直取与 camoufox 渲染两条路径的标记不同，每次都会误判更新",
+   "作者主页 HTML 不稳定（偶发 521），枚举文章优先走 get-business-list 接口，别死磕主页",
+   "连续高频测试会触发 521 挑战，脚本必须保留 --delay 限速参数并在 521 时走浏览器兜底"
+  ],
+  "result": "SUCCESS",
+  "confidence": 3.0,
+  "tools_used": [
+   "crawl_fetch",
+   "requests",
+   "beautifulsoup4",
+   "html2text",
+   "camoufox"
+  ],
+  "used_experience_ids": [],
+  "feature_hash": "82309376de149883",
+  "created_at": "2026-09-10T12:20:31+00:00",
+  "updated_at": "2026-09-10T12:20:31+00:00",
+  "used_count": 0,
+  "archived": false,
+  "qdrant_pending": false,
+  "qdrant_point_id": "c5735b79064c48dc9bf3ef83a7bc06ec",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\reverse-experience\\csdn-net\\2026-09-10T12-20-31+00-00-c5735b79.md"
+ },
+ "fe4d520902bc456e9127989eca87dd6d": {
+  "id": "fe4d520902bc456e9127989eca87dd6d",
+  "domain": "m.ceair.com",
+  "url": "https://m.ceair.com/mapp/Home",
+  "title": "东航 m.ceair.com 移动端首页逆向：请求/响应体整体 AES-CBC 加密，算法固化在 Emscripten wasm2js（wbsk_Wbox.js）内 → 复用官方 wasm2js 模块在 Node 里离线跑通，9 个 /m-base 接口全通",
+  "tags": [
+   "wasm加密",
+   "wasm2js",
+   "加密请求体",
+   "加密响应体",
+   "固定IV",
+   "无标准密码学常数",
+   "SPA",
+   "东航",
+   "ceair"
+  ],
+  "anti_crawl": [
+   "请求体与响应体整体加密：POST body 变成 {\"req\":\"<base64>\"}，响应为 {\"res\":\"<base64>\"}，由请求头 M-CEAIR-ENCRYPTED: true 标记（app.js 里 baseURL 含 '*' 才启用）",
+   "加解密算法不在业务 JS 中，而在 ecresource.ceair.com/oss-m/ticketformapp/static/wbsk_Wbox.js（917KB，Emscripten wasm2js 产物，真 wasm 已内联，同名 .wasm 在 CDN 上 404）",
+   "wasm 里按 key[0]^key[3] 分派分组算法（16/8 字节），密钥是内存 402432(加密)/402800(解密) 两段 360 字符十六进制串经 hex2bin 得到的 180 字节『密钥容器』；内存中搜不到 AES sbox/Te0/DES IP/SM4 FK 等任何标准密码学常数 → 非标准改造算法",
+   "transactionId 强绑定：header transactionId 与 body.transactionId 必须完全一致，格式 '05'+UTC(%Y%m%d%H%M%S)+随机(1..10000)",
+   "风控 JS：同盾 trustdecision/tongdun(fp.js/monitor.js)、阿里云 frontend-lib(antidom.js/interfaceacting.js)、ssxmod_itna Cookie、tingyun、amap"
+  ],
+  "attempts": [
+   {
+    "method": "requests 直接 POST /m-base/customize/main/home，body 直接给明文 JSON",
+    "result": "fail",
+    "note": "返回 {\"res\":\"<base64>\"} 或错误，必须加密"
+   },
+   {
+    "method": "在 app.js / Home.js / vendors*.js 里搜 m-ceair-encrypted、encrypted 等关键字找加密实现",
+    "result": "success",
+    "note": "只找到调用点（wbsk_AES_cbc_encrypt_base64(JSON.stringify(...), y) 与 y 常量数组），算法本体不在这里"
+   },
+   {
+    "method": "把 wbsk_Wbox.js 的 writeSegment(offset, base64) 数据段全部解出来，重建 500KB wasm 内存镜像，搜 AES/DES/SM4/MD5/SHA 常数",
+    "result": "fail",
+    "note": "内存里没有任何标准密码学常数；内存 402432/402800 是两段 360 字符十六进制串（解成 180 字节密钥容器），AES-128/192/256 密钥排程全部对不上（44/52/60 words），说明算法被改造，纯 Python/JS 复刻不划算"
+   },
+   {
+    "method": "用浏览器当 oracle 取明文/密文向量（wbsk_AES_cbc_encrypt_base64('0123456789abcdef', y)），再用 cryptography 暴力试 AES-128/192/256 × 多种 key/IV 组合（y、k 常量、内存密钥段、大小端）",
+    "result": "fail",
+    "note": "全部不匹配，确认不是标准 AES"
+   },
+   {
+    "method": "把官方 wbsk_Wbox.js + wbsk_skb.js 存本地，Node 的 vm 沙箱里加载（补 document/location/navigator/XHR/fetch 等占位对象），轮询 calledRun && Module.asm 等运行时 ready，再调 wbsk_AES_cbc_encrypt_base64",
+    "result": "success",
+    "note": "输出与浏览器字节级一致；wasm2js 内联所以不需要 .wasm 文件、无需联网"
+   },
+   {
+    "method": "用 Python + requests 复刻完整请求：M-CEAIR-ENCRYPTED: true、transactionId 双向一致、Cookie(language/ec_i18n_site/ec_salesChannel)、先 GET 首页拿 acw_tc",
+    "result": "success",
+    "note": "9 个渠道全部 resultCode=0"
+   }
+  ],
+  "final_solution": "脚本 D:\\测试\\m-ceair-com\\crawl_script\\ceair_crawler.py（站点键 m-ceair-com）。核心：不重写算法，而是复用官方 wasm2js —— wbsk/wbsk_Wbox.js + wbsk/wbsk_skb.js 本地缓存（缺失时脚本自动从 https://ecresource.ceair.com/oss-m/ticketformapp/static/ 下载），用 wbsk/wbsk_crypto.js（Node）在 vm 沙箱里加载，stdin 行协议常驻进程提供 encrypt/decrypt/selftest。固定 IV y=[121,96,7,103,57,95,61,124]×2。请求头 M-CEAIR-ENCRYPTED/M-CEAIR-OS=M/transactionId + body 内 transactionId 一致；Cookie language=zh_CN; ec_i18n_site=zh_CNY; ec_salesChannel=7701，并先 GET /mapp/Home 取 acw_tc。已封装 9 个渠道：holiday{banner{platformType:M,type:16}}/notices{type:1,platformType:M,showType:1}/home{type:2,platformType:M}/promotion{}/shopping{}/more{}/calendar/holiday{}/ticketRecommend{depCityCode:SHA,depAirportCode:''} 走加密，getBasicData{methodName:getallcity_airport_tree} 走明文。自检向量：encrypt('0123456789abcdef')=ybNT/LI1g5lZkIzmSGiytPt9tnjFtwAkNwAuBCdutuA=（可在脚本 selftest 里校验 CDN 是否改版）。",
+  "positive_lessons": [
+   "遇到『函数名叫 AES 但内存里找不到任何标准密码学常数』的 wasm/wasm2js 加密，别硬啃算法：先判断是不是 Emscripten wasm2js（特征：文件里 var WebAssembly = {...} polyfill + writeSegment(offset, base64) 写数据段 + wasm2js/asm2wasm 注释），是的话直接把官方 JS 存本地在 Node vm 里跑，字节级一致且零复刻成本 —— 这正是 xishandong/crawlProject『进阶篇/js逆向/wasm』一类案例的通用打法",
+   "wasm2js 模块在 Node 里跑通的两个关键：补齐 document/location/navigator/XMLHttpRequest/fetch 等浏览器占位对象；run() 是异步的（addRunDependency('wasm-instantiate')），必须轮询 typeof calledRun!=='undefined' && calledRun && Module.asm 等运行时 ready 再调用，否则报 'you need to wait for the runtime to be ready'",
+   "常驻 Node 子进程 + stdin 逐行 JSON 协议，比每次请求 spawn 一个 node（要重新加载 917KB 模块）快得多",
+   "一定要留浏览器实测自检向量（明文→密文）并在脚本里 selftest：CDN 一改版就能立刻发现，而不是采集出一堆垃圾数据",
+   "camoufox-debug 的 debug_evaluate 可能跑在隔离世界（Object.keys(window).length===0 就是信号），拿不到页面全局变量；此时改用 js-reverse 的 evaluate_script(mainWorld=true)",
+   "接口请求体是加密的，但可以直接把抓到的密文用同一套解密函数解出来 —— 拿到的是浏览器真实发的业务参数，比自己猜 payload 靠谱得多（notices 少传 type/platformType/showType 就返回 ERR0000）",
+   "服务端 JSON 键序可能不固定（Java HashMap 信封），增量指纹必须 json.dumps(..., sort_keys=True) 规范化键序，否则顺序抖动会被误判为内容更新"
+  ],
+  "negative_lessons": [
+   "不要在业务 bundle 里死找加密实现：关键字只能搜到调用点（wbsk_AES_cbc_encrypt_base64 + 固定 IV 常量），算法在另一个 wasm 文件里",
+   "不要因为函数名带 AES 就假设是标准 AES：先验证密钥排程（AES-128=176B/192=208B/256=240B words 递推）。这里 180 字节密钥容器三种长度都不匹配、内存无 sbox，说明是改造算法，及时止损",
+   "不要试图下载 wbsk_Wbox.wasm：CDN 上 404，wasm 已内联进 wasm2js 的 JS 里，白折腾",
+   "增量采集不做易变字段剔除 = 每次全量重抓：transactionId/servertime/ConsumeTime/StartTime/EndTime/accessToken 必须剔除；ceair 的 promotion 接口把带 transactionId 的深链 JSON 塞在 action 字符串里，需要单独归一化",
+   "别照抄浏览器全部风控头（同盾/阿里云 ssxmod）：实测最小头 + 正确 Cookie + 正确加密体即可通过，堆头反而可能触发更严风控"
+  ],
+  "result": "SUCCESS",
+  "confidence": 3.5,
+  "tools_used": [
+   "camoufox-debug",
+   "js-reverse",
+   "node/vm (wasm2js 复用)",
+   "requests",
+   "cryptography(排除标准AES用)",
+   "pwsh"
+  ],
+  "used_experience_ids": [
+   "d36d7a870fc542b4a34a002cb9c016f8"
+  ],
+  "feature_hash": "4555a22837d20226",
+  "created_at": "2026-09-10T14:54:38+00:00",
+  "updated_at": "2026-09-10T14:54:38+00:00",
+  "used_count": 0,
+  "archived": false,
+  "qdrant_pending": false,
+  "qdrant_point_id": "fe4d520902bc456e9127989eca87dd6d",
+  "md_path": "E:\\SmartBoBo\\experience-pool\\reverse-experience\\m-ceair-com\\2026-09-10T14-54-38+00-00-fe4d5209.md"
+ }
+}

@@ -1,0 +1,45 @@
+# --- uv / Python ---
+.venv/
+__pycache__/
+*.pyc
+
+# --- CloakBrowser runtime state ---
+cloak/venv/
+cloak/data/
+cloak/cloakserve.log
+cloak/plugin/node_modules/
+
+# --- DBX runtime: packaged binaries + local data (db/logs/profiles) - not uploaded ---
+dbx-runtime/
+
+# --- dsh workspace ---
+# dsh/ is uploaded as plain files (its own .git history and build junk stay out).
+# dsh/source/ = 13 third-party submodule checkouts (own .git pointers) - not uploaded;
+# dsh's own .gitignore ignores them too.
+dsh/.git/
+dsh/node_modules/
+dsh/src-tauri/target/
+dsh/source/
+dsh/.temp/
+.dsh/
+
+# --- Node ---
+node_modules/
+# vendor/ 的 dsh-tauri 插件构建产物以普通文件收录（勿随 node_modules 规则忽略）
+!vendor/dsh-resources/node_modules/
+!vendor/dsh-resources/node_modules/**
+
+# --- misc ---
+*.log
+.temp/
+
+# --- 功能运行时状态与密钥（不进版本库）---
+# 经验池连接配置：含 Qdrant API Key，新环境按 docs/后端功能/02 手工创建
+experience-pool.json
+# 代理池失败台账（运行时生成）
+data/proxy_failed.json
+# 闸门会话粘性状态（运行时生成）
+.dsh/bobo-session-state/
+
+# --- Windows 打包：整个 packaging 目录不上传（含脚本、产物、NSIS 工具链）---
+packaging/

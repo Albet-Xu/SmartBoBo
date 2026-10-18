@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: DeepSeek Harness 官方反馈
+    url: https://trtgsjkv6r.feishu.cn/share/base/form/shrcnlCoGElW7MQznGy9r3YYXcg?hide_uid=1&hide_device_info=1&hide_harness_version=1
+    about: 内核或官方 Harness 功能问题请通过官方表单反馈；桌面端问题请使用本仓库的 Issue 模板。
